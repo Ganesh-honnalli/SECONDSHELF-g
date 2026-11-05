@@ -34,20 +34,6 @@ export type RecycleScrapRequestStatus =
 
 export type RaddiRequestStatus = RecycleScrapRequestStatus;
 
-// Alias
-const _dummy = 
-  | 'Pending' 
-  | 'Offer Received' 
-  | 'Accepted' 
-  | 'Pickup Scheduled' 
-  | 'Collected' 
-  | 'Final Price Sent' 
-  | 'Payment Pending' 
-  | 'Completed' 
-  | 'Rejected' 
-  | 'Cancelled' 
-  | 'Disputed';
-
 export type WastePaperType = 
   | 'Newspapers' 
   | 'Notebooks' 
@@ -93,25 +79,19 @@ export interface RecycleScrapOwner {
   id: string;
   userId: string;
   businessName: string;
-  licence: string;
+  licence?: string;
+  licenceNumber?: string;
   baseAddress: string;
-  approvalStatus: 'pending' | 'approved' | 'rejected' | 'suspended';
+  operatingPinCodes?: string[];
+  city?: string;
+  state?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
+  adminApprovalStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
 }
 
 export type RaddiOwner = RecycleScrapOwner;
-const _dummy2 = {
-  id: string;
-  userId: string;
-  businessName: string;
-  licenceNumber: string;
-  baseAddress: string;
-  operatingPinCodes: string[];
-  city: string;
-  state: string;
-  contactPhone: string;
-  contactEmail: string;
-  adminApprovalStatus: 'pending' | 'approved' | 'rejected' | 'suspended';
-}
 
 export interface ValuationRule {
   conditionName: BookCondition;

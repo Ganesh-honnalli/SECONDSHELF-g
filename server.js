@@ -8,6 +8,29 @@ const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
 
+// Simple .env parser helper
+function loadEnv() {
+  const envPath = path.join(__dirname, '.env');
+  const env = {};
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx !== -1) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim();
+        env[key] = val;
+        process.env[key] = val;
+      }
+    }
+  }
+  return env;
+}
+
+loadEnv();
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
   '.js': 'text/javascript; charset=UTF-8',
@@ -24,7 +47,48 @@ const MIME_TYPES = {
 
 const server = http.createServer((req, res) => {
   // Normalize URL
-  let reqPath = req.url.split('?')[0];
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  let reqPath = parsedUrl.pathname;
+
+  // API endpoint for Supabase client configuration
+  if (reqPath === '/api/config') {
+    const env = loadEnv();
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify({
+      supabaseUrl: env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+      supabaseAnonKey: env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '',
+      appUrl: env.VITE_APP_URL || 'http://localhost:3000'
+    }));
+    return;
+  }
+
+  // API endpoint to save Supabase config to .env
+  if (reqPath === '/api/save-config' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const { supabaseUrl, supabaseAnonKey } = data;
+        const envContent = `# SECOND SHELF Environment Configuration\n` +
+          `VITE_SUPABASE_URL=${supabaseUrl || ''}\n` +
+          `VITE_SUPABASE_ANON_KEY=${supabaseAnonKey || ''}\n` +
+          `VITE_APP_URL=http://localhost:${PORT}\n`;
+        fs.writeFileSync(path.join(__dirname, '.env'), envContent, 'utf8');
+        loadEnv();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Supabase configuration saved to .env' }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
   if (reqPath === '/') {
     reqPath = '/index.html';
   }

@@ -1,490 +1,651 @@
 -- ====================================================================
--- SECOND SHELF - Supabase Database Schema
--- Marketplace connecting Sellers with Book Stalls & Raddi Owners
+-- SECOND SHELF - Comprehensive PostgreSQL Database Schema
+-- Production Schema with 20 Tables, Constraints, RLS & Realtime
 -- ====================================================================
 
--- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. PROFILES & ROLES
--- Extends Supabase auth.users
+-- ====================================================================
+-- 1. PROFILES (Extends auth.users)
+-- ====================================================================
 CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email TEXT NOT NULL UNIQUE,
-    full_name TEXT NOT NULL,
-    phone_number TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('seller', 'book_stall', 'raddi_owner', 'admin')),
-    is_verified BOOLEAN DEFAULT FALSE,
-    age_confirmed BOOLEAN DEFAULT FALSE, -- Must be 18+
-    avatar_url TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  phone TEXT,
+  age_confirmed BOOLEAN DEFAULT false,
+  is_verified BOOLEAN DEFAULT false,
+  is_suspended BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. BOOK STALLS
--- Registered book stall businesses (require admin approval)
+-- ====================================================================
+-- 2. USER ROLES (Role-based access control: seller, book_stall, scrap_owner, admin)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('seller', 'book_stall', 'scrap_owner', 'admin')),
+  is_approved BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, role)
+);
+
+-- ====================================================================
+-- 3. BOOK STALLS (Physical book store partner profiles)
+-- ====================================================================
 CREATE TABLE IF NOT EXISTS public.book_stalls (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    stall_name TEXT NOT NULL,
-    shop_licence_or_gst TEXT,
-    address TEXT NOT NULL,
-    pin_code VARCHAR(10) NOT NULL,
-    city TEXT NOT NULL DEFAULT 'Bengaluru',
-    state TEXT NOT NULL DEFAULT 'Karnataka',
-    contact_phone TEXT NOT NULL,
-    contact_email TEXT NOT NULL,
-    offers_pickup BOOLEAN DEFAULT FALSE,
-    admin_approval_status TEXT NOT NULL DEFAULT 'pending' 
-        CHECK (admin_approval_status IN ('pending', 'approved', 'rejected', 'suspended')),
-    rejection_reason TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE,
+  stall_name TEXT NOT NULL,
+  owner_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  licence_number TEXT NOT NULL,
+  address TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  approval_status TEXT NOT NULL CHECK (approval_status IN ('pending', 'approved', 'rejected', 'suspended')) DEFAULT 'pending',
+  offers_pickup BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. RADDI OWNERS (Waste Paper Recyclers)
--- Registered waste paper dealers (require admin approval)
-CREATE TABLE IF NOT EXISTS public.raddi_owners (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    business_name TEXT NOT NULL,
-    licence_number TEXT,
-    base_address TEXT NOT NULL,
-    operating_pin_codes TEXT[] DEFAULT ARRAY[]::TEXT[],
-    city TEXT NOT NULL DEFAULT 'Bengaluru',
-    state TEXT NOT NULL DEFAULT 'Karnataka',
-    contact_phone TEXT NOT NULL,
-    contact_email TEXT NOT NULL,
-    admin_approval_status TEXT NOT NULL DEFAULT 'pending' 
-        CHECK (admin_approval_status IN ('pending', 'approved', 'rejected', 'suspended')),
-    rejection_reason TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- ====================================================================
+-- 4. SCRAP OWNERS (Licensed recycle scrap / paper depot partners)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.scrap_owners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE,
+  business_name TEXT NOT NULL,
+  owner_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  licence_number TEXT NOT NULL,
+  address TEXT NOT NULL,
+  base_area TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  approval_status TEXT NOT NULL CHECK (approval_status IN ('pending', 'approved', 'rejected', 'suspended')) DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. BOOK CATEGORIES (Admin configurable)
-CREATE TABLE IF NOT EXISTS public.categories (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE,
-    description TEXT,
-    is_active BOOLEAN DEFAULT TRUE,
-    display_order INT DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- ====================================================================
+-- 5. TEXTBOOK CATEGORIES (Admin-configurable subcategories)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.textbook_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT UNIQUE NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. VALUATION RULES (Admin configurable condition % limits)
+-- Valuation Rules table (Admin-configurable condition caps)
 CREATE TABLE IF NOT EXISTS public.valuation_rules (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    condition_name TEXT NOT NULL UNIQUE CHECK (condition_name IN ('Like New', 'Good', 'Used', 'Old or Damaged')),
-    max_percentage NUMERIC(5,2) NOT NULL CHECK (max_percentage > 0 AND max_percentage <= 100),
-    description TEXT,
-    updated_by UUID REFERENCES public.profiles(id),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condition_name TEXT UNIQUE NOT NULL CHECK (condition_name IN ('Like New', 'Good', 'Used', 'Old or Damaged')),
+  max_percentage NUMERIC(5, 2) NOT NULL CHECK (max_percentage > 0 AND max_percentage <= 100),
+  description TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. USED BOOK REQUESTS
+-- ====================================================================
+-- 6. BOOK REQUESTS (Seller used textbook submissions)
+-- ====================================================================
 CREATE TABLE IF NOT EXISTS public.book_requests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_number TEXT NOT NULL UNIQUE,
-    seller_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
-    assigned_stall_id UUID REFERENCES public.book_stalls(id) ON DELETE SET NULL,
-    status TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN (
-        'Pending', 
-        'Offer Received', 
-        'Offer Revised', 
-        'Accepted', 
-        'Awaiting Book', 
-        'Received', 
-        'Under Inspection', 
-        'Final Offer Sent', 
-        'Payment Pending', 
-        'Completed', 
-        'Rejected', 
-        'Cancelled', 
-        'Disputed'
-    )),
-    preferred_handover_method TEXT NOT NULL CHECK (preferred_handover_method IN (
-        'direct_stall_handover', 
-        'arranged_pickup', 
-        'parcel_postal'
-    )),
-    seller_address TEXT NOT NULL,
-    seller_pin_code VARCHAR(10) NOT NULL,
-    total_original_price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
-    total_estimated_payout NUMERIC(10,2) NOT NULL DEFAULT 0.00,
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_number TEXT UNIQUE NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  category_id UUID REFERENCES public.textbook_categories(id),
+  title TEXT NOT NULL,
+  author TEXT NOT NULL,
+  isbn TEXT,
+  publisher_edition TEXT,
+  class_semester TEXT,
+  original_price NUMERIC(10, 2) NOT NULL CHECK (original_price > 0),
+  book_condition TEXT NOT NULL CHECK (book_condition IN ('Like New', 'Good', 'Used', 'Old or Damaged')),
+  copies INT NOT NULL DEFAULT 1 CHECK (copies > 0),
+  max_valuation_pct NUMERIC(5, 2) NOT NULL,
+  total_estimated_payout NUMERIC(10, 2) NOT NULL,
+  handover_method TEXT NOT NULL CHECK (handover_method IN ('direct_stall_handover', 'arranged_pickup', 'parcel_postal')),
+  pickup_address TEXT,
+  contact_phone TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN (
+    'Pending', 'Offer Received', 'Offer Revised', 'Accepted',
+    'Awaiting Book', 'Received', 'Under Inspection', 'Final Offer Sent',
+    'Payment Pending', 'Completed', 'Rejected', 'Cancelled', 'Disputed'
+  )) DEFAULT 'Pending',
+  assigned_stall_id UUID REFERENCES public.book_stalls(id),
+  accepted_offer_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. BOOK ITEMS (Multi-item support per request)
-CREATE TABLE IF NOT EXISTS public.book_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    book_request_id UUID NOT NULL REFERENCES public.book_requests(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    author TEXT NOT NULL,
-    isbn TEXT,
-    category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
-    class_or_semester TEXT,
-    publisher TEXT,
-    edition TEXT,
-    original_price NUMERIC(10,2) NOT NULL CHECK (original_price > 0),
-    condition TEXT NOT NULL CHECK (condition IN ('Like New', 'Good', 'Used', 'Old or Damaged')),
-    number_of_copies INT NOT NULL DEFAULT 1 CHECK (number_of_copies >= 1),
-    front_cover_url TEXT NOT NULL,
-    back_cover_url TEXT NOT NULL,
-    inside_page_url TEXT NOT NULL,
-    estimated_item_payout NUMERIC(10,2) NOT NULL DEFAULT 0.00,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- ====================================================================
+-- 7. BOOK IMAGES (Photos: Front cover, back cover, inside page)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.book_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID NOT NULL REFERENCES public.book_requests(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  image_type TEXT CHECK (image_type IN ('front_cover', 'back_cover', 'inside_page', 'other')) DEFAULT 'front_cover',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. RADDI / WASTE PAPER REQUESTS
--- Strict requirement: minimum 10 kg constraint enforced in DB
-CREATE TABLE IF NOT EXISTS public.waste_requests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_number TEXT NOT NULL UNIQUE,
-    seller_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
-    assigned_raddi_owner_id UUID REFERENCES public.raddi_owners(id) ON DELETE SET NULL,
-    paper_type TEXT NOT NULL CHECK (paper_type IN (
-        'Newspapers', 
-        'Notebooks', 
-        'Old Papers', 
-        'Magazines', 
-        'Cardboard', 
-        'Mixed Paper'
-    )),
-    estimated_weight_kg NUMERIC(6,2) NOT NULL CHECK (estimated_weight_kg >= 10.0),
-    photos TEXT[] DEFAULT ARRAY[]::TEXT[],
-    seller_name TEXT NOT NULL,
-    seller_phone TEXT NOT NULL,
-    seller_email TEXT NOT NULL,
-    pickup_address TEXT NOT NULL,
-    pickup_pin_code VARCHAR(10) NOT NULL CHECK (length(pickup_pin_code) = 6),
-    pickup_area TEXT NOT NULL, -- Publicly visible to recyclers before offer acceptance
-    preferred_pickup_date DATE NOT NULL,
-    preferred_time_slot TEXT NOT NULL,
-    notes TEXT,
-    status TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN (
-        'Pending', 
-        'Offer Received', 
-        'Accepted', 
-        'Pickup Scheduled', 
-        'Collected', 
-        'Final Price Sent', 
-        'Payment Pending', 
-        'Completed', 
-        'Rejected', 
-        'Cancelled', 
-        'Disputed'
-    )),
-    actual_weight_kg NUMERIC(6,2) CHECK (actual_weight_kg IS NULL OR actual_weight_kg > 0),
-    offered_rate_per_kg NUMERIC(6,2),
-    final_amount NUMERIC(10,2),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- ====================================================================
+-- 8. BOOK OFFERS (Multiple stall quotes capped by condition percentages)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.book_offers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID NOT NULL REFERENCES public.book_requests(id) ON DELETE CASCADE,
+  stall_id UUID NOT NULL REFERENCES public.book_stalls(id) ON DELETE CASCADE,
+  offered_amount NUMERIC(10, 2) NOT NULL CHECK (offered_amount > 0),
+  max_allowed_amount NUMERIC(10, 2) NOT NULL,
+  is_lower_than_estimate BOOLEAN DEFAULT false,
+  reason TEXT,
+  status TEXT NOT NULL CHECK (status IN ('Pending', 'Accepted', 'Rejected', 'Revised', 'Cancelled')) DEFAULT 'Pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 9. OFFERS (Book & Raddi offers)
-CREATE TABLE IF NOT EXISTS public.offers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_type TEXT NOT NULL CHECK (request_type IN ('book', 'raddi')),
-    book_request_id UUID REFERENCES public.book_requests(id) ON DELETE CASCADE,
-    waste_request_id UUID REFERENCES public.waste_requests(id) ON DELETE CASCADE,
-    stall_id UUID REFERENCES public.book_stalls(id) ON DELETE CASCADE,
-    raddi_owner_id UUID REFERENCES public.raddi_owners(id) ON DELETE CASCADE,
-    offered_amount NUMERIC(10,2) NOT NULL CHECK (offered_amount > 0),
-    offered_rate_per_kg NUMERIC(6,2), -- Applicable for raddi requests
-    offer_status TEXT NOT NULL DEFAULT 'active' CHECK (offer_status IN ('active', 'revised', 'accepted', 'rejected', 'expired')),
-    revision_reason TEXT,
-    rejection_reason TEXT,
-    seller_response_notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT chk_offer_target CHECK (
-        (request_type = 'book' AND book_request_id IS NOT NULL AND stall_id IS NOT NULL) OR
-        (request_type = 'raddi' AND waste_request_id IS NOT NULL AND raddi_owner_id IS NOT NULL)
-    )
+-- ====================================================================
+-- 9. SCRAP REQUESTS (Waste paper / scrap submissions - strictly >= 10 kg)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.scrap_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_number TEXT UNIQUE NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  paper_type TEXT NOT NULL,
+  estimated_weight_kg NUMERIC(6, 2) NOT NULL CHECK (estimated_weight_kg >= 10.0),
+  actual_weight_kg NUMERIC(6, 2) CHECK (actual_weight_kg IS NULL OR actual_weight_kg >= 10.0),
+  seller_name TEXT NOT NULL,
+  seller_phone TEXT NOT NULL,
+  pickup_address TEXT NOT NULL,
+  pickup_area TEXT NOT NULL,
+  pickup_pin TEXT NOT NULL CHECK (pickup_pin ~ '^[0-9]{6}$'),
+  preferred_date DATE NOT NULL,
+  preferred_slot TEXT NOT NULL,
+  notes TEXT,
+  status TEXT NOT NULL CHECK (status IN (
+    'Pending', 'Offer Received', 'Accepted', 'Pickup Scheduled',
+    'Collected', 'Final Price Sent', 'Payment Pending', 'Completed',
+    'Rejected', 'Cancelled', 'Disputed'
+  )) DEFAULT 'Pending',
+  assigned_owner_id UUID REFERENCES public.scrap_owners(id),
+  accepted_offer_id UUID,
+  final_amount NUMERIC(10, 2),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 10. PAYMENTS (Two-party confirmation model)
--- Platform records payment info; completed ONLY after seller confirms receipt!
-CREATE TABLE IF NOT EXISTS public.payments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    transaction_type TEXT NOT NULL CHECK (transaction_type IN ('book', 'raddi')),
-    book_request_id UUID REFERENCES public.book_requests(id) ON DELETE CASCADE,
-    waste_request_id UUID REFERENCES public.waste_requests(id) ON DELETE CASCADE,
-    payer_user_id UUID NOT NULL REFERENCES public.profiles(id),
-    seller_user_id UUID NOT NULL REFERENCES public.profiles(id),
-    amount NUMERIC(10,2) NOT NULL CHECK (amount > 0),
-    payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'upi', 'bank_transfer')),
-    payment_reference_utr TEXT,
-    payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    receipt_url TEXT,
-    notes TEXT,
-    payer_recorded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    seller_confirmed_at TIMESTAMP WITH TIME ZONE,
-    status TEXT NOT NULL DEFAULT 'pending_confirmation' CHECK (status IN ('pending_confirmation', 'confirmed', 'disputed')),
-    dispute_reason TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT chk_payment_target CHECK (
-        (transaction_type = 'book' AND book_request_id IS NOT NULL) OR
-        (transaction_type = 'raddi' AND waste_request_id IS NOT NULL)
-    )
+-- ====================================================================
+-- 10. SCRAP IMAGES (Waste paper photographs)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.scrap_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID NOT NULL REFERENCES public.scrap_requests(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 11. DISPUTES
-CREATE TABLE IF NOT EXISTS public.disputes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_type TEXT NOT NULL CHECK (request_type IN ('book', 'raddi')),
-    book_request_id UUID REFERENCES public.book_requests(id) ON DELETE CASCADE,
-    waste_request_id UUID REFERENCES public.waste_requests(id) ON DELETE CASCADE,
-    raised_by_user_id UUID NOT NULL REFERENCES public.profiles(id),
-    against_user_id UUID NOT NULL REFERENCES public.profiles(id),
-    reason TEXT NOT NULL,
-    details TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'under_review', 'resolved', 'dismissed')),
-    admin_resolution_notes TEXT,
-    resolved_by UUID REFERENCES public.profiles(id),
-    resolved_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- ====================================================================
+-- 11. SCRAP OFFERS (Rate per kg submitted by approved scrap dealers)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.scrap_offers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID NOT NULL REFERENCES public.scrap_requests(id) ON DELETE CASCADE,
+  scrap_owner_id UUID NOT NULL REFERENCES public.scrap_owners(id) ON DELETE CASCADE,
+  rate_per_kg NUMERIC(6, 2) NOT NULL CHECK (rate_per_kg > 0),
+  total_estimated_amount NUMERIC(10, 2) NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('Pending', 'Accepted', 'Rejected', 'Cancelled')) DEFAULT 'Pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 12. AUDIT LOGS
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    action TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id UUID,
-    metadata JSONB DEFAULT '{}'::JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- ====================================================================
+-- 12. TRANSACTIONS (Active deals created upon offer acceptance)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_number TEXT UNIQUE NOT NULL,
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('book', 'scrap')),
+  request_id UUID NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.profiles(id),
+  partner_type TEXT NOT NULL CHECK (partner_type IN ('book_stall', 'scrap_owner')),
+  partner_user_id UUID NOT NULL REFERENCES public.profiles(id),
+  agreed_amount NUMERIC(10, 2) NOT NULL,
+  final_amount NUMERIC(10, 2),
+  status TEXT NOT NULL CHECK (status IN (
+    'initiated', 'inspection', 'payment_pending', 'completed', 'disputed', 'cancelled'
+  )) DEFAULT 'initiated',
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 13. NOTIFICATIONS
+-- ====================================================================
+-- 13. CONVERSATIONS (One private thread per accepted transaction)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE UNIQUE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id),
+  partner_user_id UUID NOT NULL REFERENCES public.profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ====================================================================
+-- 14. MESSAGES (Direct messages between User and selected Owner)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES public.profiles(id),
+  content TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ====================================================================
+-- 15. NOTIFICATIONS (Realtime user and partner alerts)
+-- ====================================================================
 CREATE TABLE IF NOT EXISTS public.notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    link TEXT,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  notification_type TEXT NOT NULL,
+  reference_id UUID,
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ====================================================================
+-- 16. PAYMENT RECORDS (Direct settlement with mandatory 2-party confirmation)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.payment_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
+  paid_by UUID NOT NULL REFERENCES public.profiles(id),
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'upi', 'bank_transfer')),
+  utr_reference TEXT,
+  amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+  payment_date TIMESTAMPTZ DEFAULT NOW(),
+  buyer_confirmed BOOLEAN DEFAULT true,
+  seller_confirmed BOOLEAN DEFAULT false,
+  status TEXT NOT NULL CHECK (status IN ('pending_confirmation', 'confirmed', 'disputed')) DEFAULT 'pending_confirmation',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ====================================================================
+-- 17. GUIDELINES (Admin managed section rules & instructions)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.guidelines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  section_page TEXT NOT NULL CHECK (section_page IN (
+    'textbook_submission', 'valuation_rules', 'scrap_weight',
+    'pickup_instructions', 'payment_guidelines', 'all'
+  )),
+  is_published BOOLEAN DEFAULT true,
+  created_by UUID REFERENCES public.profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ====================================================================
+-- 18. ANNOUNCEMENTS (Admin broadcasts to users & business partners)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.announcements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  target_role TEXT NOT NULL CHECK (target_role IN ('all', 'seller', 'book_stall', 'scrap_owner')) DEFAULT 'all',
+  is_published BOOLEAN DEFAULT true,
+  published_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES public.profiles(id)
+);
+
+-- ====================================================================
+-- 19. COMPLAINTS (Customer support & dispute tickets)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.complaints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_number TEXT UNIQUE NOT NULL,
+  filed_by UUID NOT NULL REFERENCES public.profiles(id),
+  against_user_id UUID REFERENCES public.profiles(id),
+  transaction_id UUID REFERENCES public.transactions(id),
+  subject TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('open', 'under_investigation', 'resolved', 'closed')) DEFAULT 'open',
+  resolution_notes TEXT,
+  resolved_by UUID REFERENCES public.profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ====================================================================
+-- 20. ADMIN AUDIT LOGS (Immutable security and moderation records)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id UUID REFERENCES public.profiles(id),
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id UUID,
+  details JSONB,
+  ip_address TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ====================================================================
+-- PRIVACY-MASKED VIEW FOR SCRAP OWNERS (Shields address until accepted)
+-- ====================================================================
+CREATE OR REPLACE VIEW public.v_waste_requests_recycler AS
+SELECT 
+  id,
+  request_number,
+  paper_type,
+  estimated_weight_kg,
+  actual_weight_kg,
+  pickup_area,
+  pickup_pin,
+  preferred_date,
+  preferred_slot,
+  notes,
+  status,
+  assigned_owner_id,
+  accepted_offer_id,
+  created_at,
+  -- Private data revealed ONLY to the assigned scrap owner when accepted
+  CASE 
+    WHEN status IN ('Accepted', 'Pickup Scheduled', 'Collected', 'Final Price Sent', 'Payment Pending', 'Completed') 
+      AND assigned_owner_id = (SELECT so.id FROM public.scrap_owners so WHERE so.user_id = auth.uid())
+    THEN seller_name 
+    ELSE 'Confidential (Seller Protected)' 
+  END AS seller_name,
+  CASE 
+    WHEN status IN ('Accepted', 'Pickup Scheduled', 'Collected', 'Final Price Sent', 'Payment Pending', 'Completed') 
+      AND assigned_owner_id = (SELECT so.id FROM public.scrap_owners so WHERE so.user_id = auth.uid())
+    THEN seller_phone 
+    ELSE 'Confidential (Unlocked on Acceptance)' 
+  END AS seller_phone,
+  CASE 
+    WHEN status IN ('Accepted', 'Pickup Scheduled', 'Collected', 'Final Price Sent', 'Payment Pending', 'Completed') 
+      AND assigned_owner_id = (SELECT so.id FROM public.scrap_owners so WHERE so.user_id = auth.uid())
+    THEN pickup_address 
+    ELSE 'Confidential (Door number hidden)' 
+  END AS pickup_address
+FROM public.scrap_requests;
+
+-- ====================================================================
+-- INDEXES FOR HIGH-PERFORMANCE QUERIES
+-- ====================================================================
+CREATE INDEX IF NOT EXISTS idx_book_requests_user ON public.book_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_book_requests_status ON public.book_requests(status);
+CREATE INDEX IF NOT EXISTS idx_scrap_requests_user ON public.scrap_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_scrap_requests_status ON public.scrap_requests(status);
+CREATE INDEX IF NOT EXISTS idx_book_offers_request ON public.book_offers(request_id);
+CREATE INDEX IF NOT EXISTS idx_scrap_offers_request ON public.scrap_offers(request_id);
+CREATE INDEX IF NOT EXISTS idx_messages_convo ON public.messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_transactions_user ON public.transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_partner ON public.transactions(partner_user_id);
 
 -- ====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ====================================================================
-
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.book_stalls ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.raddi_owners ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scrap_owners ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.textbook_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.valuation_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.book_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.book_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.waste_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.offers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.disputes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.book_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.book_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scrap_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scrap_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scrap_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.guidelines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Helper function to check if auth.uid() is admin
-CREATE OR REPLACE FUNCTION public.is_admin() 
+-- Helper function to check if current user is admin
+CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
-    RETURN EXISTS (
-        SELECT 1 FROM public.profiles 
-        WHERE id = auth.uid() AND role = 'admin'
-    );
+  RETURN EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'admin'
+  );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Profiles: Users see their own profile, admin sees all
-CREATE POLICY "Users can view own profile" ON public.profiles
-    FOR SELECT USING (auth.uid() = id OR public.is_admin());
+-- Profiles Policies
+CREATE POLICY "Public profiles are readable by authenticated users" ON public.profiles
+  FOR SELECT TO authenticated USING (true);
+
 CREATE POLICY "Users can update own profile" ON public.profiles
-    FOR UPDATE USING (auth.uid() = id OR public.is_admin());
+  FOR UPDATE TO authenticated USING (auth.uid() = id);
 
--- Book Stalls: Approved stalls are public, stall owner can view & update own stall
-CREATE POLICY "Public can view approved book stalls" ON public.book_stalls
-    FOR SELECT USING (admin_approval_status = 'approved' OR user_id = auth.uid() OR public.is_admin());
-CREATE POLICY "Owners can update their own stall" ON public.book_stalls
-    FOR UPDATE USING (user_id = auth.uid() OR public.is_admin());
-CREATE POLICY "Admins can update stall approvals" ON public.book_stalls
-    FOR ALL USING (public.is_admin());
+-- Categories & Valuation (Public read, admin write)
+CREATE POLICY "Categories readable by all" ON public.textbook_categories
+  FOR SELECT TO public USING (is_active = true OR public.is_admin());
 
--- Raddi Owners: Similar to book stalls
-CREATE POLICY "Public can view approved raddi owners" ON public.raddi_owners
-    FOR SELECT USING (admin_approval_status = 'approved' OR user_id = auth.uid() OR public.is_admin());
-CREATE POLICY "Owners can update own raddi profile" ON public.raddi_owners
-    FOR UPDATE USING (user_id = auth.uid() OR public.is_admin());
-CREATE POLICY "Admins can manage raddi owners" ON public.raddi_owners
-    FOR ALL USING (public.is_admin());
+CREATE POLICY "Categories admin full access" ON public.textbook_categories
+  FOR ALL TO authenticated USING (public.is_admin());
 
--- Categories: Read public, write admin only
-CREATE POLICY "Anyone can view categories" ON public.categories
-    FOR SELECT USING (is_active = TRUE OR public.is_admin());
-CREATE POLICY "Admins can manage categories" ON public.categories
-    FOR ALL USING (public.is_admin());
+CREATE POLICY "Valuation rules readable by all" ON public.valuation_rules
+  FOR SELECT TO public USING (true);
 
--- Valuation rules: Read public, write admin only
-CREATE POLICY "Anyone can read valuation rules" ON public.valuation_rules
-    FOR SELECT USING (TRUE);
-CREATE POLICY "Admins can manage valuation rules" ON public.valuation_rules
-    FOR ALL USING (public.is_admin());
+CREATE POLICY "Valuation rules admin full access" ON public.valuation_rules
+  FOR ALL TO authenticated USING (public.is_admin());
 
--- Book requests:
--- Sellers see their own requests.
--- Approved book stalls see requests in 'Pending' or assigned to them.
--- Admins see all.
-CREATE POLICY "Sellers can view own book requests" ON public.book_requests
-    FOR SELECT USING (
-        seller_id = auth.uid() OR 
-        public.is_admin() OR
-        EXISTS (
-            SELECT 1 FROM public.book_stalls bs 
-            WHERE bs.user_id = auth.uid() 
-              AND bs.admin_approval_status = 'approved'
-              AND (book_requests.status = 'Pending' OR book_requests.assigned_stall_id = bs.id)
-        )
-    );
-CREATE POLICY "Sellers can insert own book requests" ON public.book_requests
-    FOR INSERT WITH CHECK (seller_id = auth.uid());
-CREATE POLICY "Sellers and Stalls can update book requests" ON public.book_requests
-    FOR UPDATE USING (
-        seller_id = auth.uid() OR 
-        public.is_admin() OR
-        EXISTS (
-            SELECT 1 FROM public.book_stalls bs 
-            WHERE bs.user_id = auth.uid() AND bs.admin_approval_status = 'approved'
-        )
-    );
+-- Book Stalls & Scrap Owners (Approved read, owner update, admin manage)
+CREATE POLICY "Stalls readable by authenticated" ON public.book_stalls
+  FOR SELECT TO authenticated USING (approval_status = 'approved' OR user_id = auth.uid() OR public.is_admin());
 
--- Book items: Follows book_request access
-CREATE POLICY "View book items" ON public.book_items
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.book_requests br 
-            WHERE br.id = book_items.book_request_id 
-              AND (br.seller_id = auth.uid() OR public.is_admin() OR EXISTS (
-                  SELECT 1 FROM public.book_stalls bs 
-                  WHERE bs.user_id = auth.uid() AND bs.admin_approval_status = 'approved'
-              ))
-        )
-    );
-CREATE POLICY "Insert book items" ON public.book_items
-    FOR INSERT WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.book_requests br 
-            WHERE br.id = book_items.book_request_id AND br.seller_id = auth.uid()
-        )
-    );
+CREATE POLICY "Stall owners can register" ON public.book_stalls
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Raddi / Waste Requests:
--- Strict Privacy Rule: Unaccepted requests show ONLY area and pin code.
--- Full address and phone are hidden from non-assigned recyclers.
-CREATE POLICY "Waste requests view policy" ON public.waste_requests
-    FOR SELECT USING (
-        seller_id = auth.uid() OR 
-        public.is_admin() OR
-        EXISTS (
-            SELECT 1 FROM public.raddi_owners ro 
-            WHERE ro.user_id = auth.uid() 
-              AND ro.admin_approval_status = 'approved'
-        )
-    );
-CREATE POLICY "Sellers can insert waste requests" ON public.waste_requests
-    FOR INSERT WITH CHECK (
-        seller_id = auth.uid() AND estimated_weight_kg >= 10.0
-    );
-CREATE POLICY "Sellers and assigned raddi owners can update waste requests" ON public.waste_requests
-    FOR UPDATE USING (
-        seller_id = auth.uid() OR 
-        public.is_admin() OR
-        EXISTS (
-            SELECT 1 FROM public.raddi_owners ro 
-            WHERE ro.user_id = auth.uid() AND ro.admin_approval_status = 'approved'
-        )
-    );
+CREATE POLICY "Stall owners can update own details" ON public.book_stalls
+  FOR UPDATE TO authenticated USING (user_id = auth.uid() OR public.is_admin());
 
--- Secure View for Raddi Owners to hide personal contact until offer accepted:
-CREATE OR REPLACE VIEW public.v_waste_requests_recycler AS
-SELECT 
-    id,
-    request_number,
-    paper_type,
-    estimated_weight_kg,
-    photos,
-    pickup_area,
-    pickup_pin_code,
-    preferred_pickup_date,
-    preferred_time_slot,
-    notes,
-    status,
-    created_at,
-    -- Contact details revealed ONLY after acceptance and assignment
-    CASE 
-        WHEN status IN ('Accepted', 'Pickup Scheduled', 'Collected', 'Final Price Sent', 'Payment Pending', 'Completed') 
-             AND assigned_raddi_owner_id = (SELECT id FROM public.raddi_owners WHERE user_id = auth.uid())
-        THEN seller_name 
-        ELSE 'Confidential (Revealed after offer acceptance)' 
-    END AS seller_name,
-    CASE 
-        WHEN status IN ('Accepted', 'Pickup Scheduled', 'Collected', 'Final Price Sent', 'Payment Pending', 'Completed') 
-             AND assigned_raddi_owner_id = (SELECT id FROM public.raddi_owners WHERE user_id = auth.uid())
-        THEN seller_phone 
-        ELSE 'Confidential' 
-    END AS seller_phone,
-    CASE 
-        WHEN status IN ('Accepted', 'Pickup Scheduled', 'Collected', 'Final Price Sent', 'Payment Pending', 'Completed') 
-             AND assigned_raddi_owner_id = (SELECT id FROM public.raddi_owners WHERE user_id = auth.uid())
-        THEN pickup_address 
-        ELSE 'Confidential (Area visible)' 
-    END AS pickup_address
-FROM public.waste_requests;
+CREATE POLICY "Scrap owners readable by authenticated" ON public.scrap_owners
+  FOR SELECT TO authenticated USING (approval_status = 'approved' OR user_id = auth.uid() OR public.is_admin());
 
--- Offers Policy:
-CREATE POLICY "Offers view policy" ON public.offers
-    FOR SELECT USING (
-        public.is_admin() OR
-        EXISTS (
-            SELECT 1 FROM public.book_requests br 
-            WHERE br.id = offers.book_request_id AND br.seller_id = auth.uid()
-        ) OR
-        EXISTS (
-            SELECT 1 FROM public.waste_requests wr 
-            WHERE wr.id = offers.waste_request_id AND wr.seller_id = auth.uid()
-        ) OR
-        EXISTS (
-            SELECT 1 FROM public.book_stalls bs 
-            WHERE bs.id = offers.stall_id AND bs.user_id = auth.uid()
-        ) OR
-        EXISTS (
-            SELECT 1 FROM public.raddi_owners ro 
-            WHERE ro.id = offers.raddi_owner_id AND ro.user_id = auth.uid()
-        )
-    );
+CREATE POLICY "Scrap owners can register" ON public.scrap_owners
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Payments Policy:
-CREATE POLICY "Payments view policy" ON public.payments
-    FOR SELECT USING (
-        payer_user_id = auth.uid() OR 
-        seller_user_id = auth.uid() OR 
-        public.is_admin()
-    );
-CREATE POLICY "Payers can record payments" ON public.payments
-    FOR INSERT WITH CHECK (payer_user_id = auth.uid());
-CREATE POLICY "Parties can update payment confirmation" ON public.payments
-    FOR UPDATE USING (
-        payer_user_id = auth.uid() OR 
-        seller_user_id = auth.uid() OR 
-        public.is_admin()
-    );
+CREATE POLICY "Scrap owners can update own details" ON public.scrap_owners
+  FOR UPDATE TO authenticated USING (user_id = auth.uid() OR public.is_admin());
 
--- Notifications Policy:
-CREATE POLICY "Users view own notifications" ON public.notifications
-    FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Users update own notifications" ON public.notifications
-    FOR UPDATE USING (user_id = auth.uid());
+-- Book Requests (User CRUD own, approved stalls read pending, admin all)
+CREATE POLICY "Users view own book requests" ON public.book_requests
+  FOR SELECT TO authenticated USING (
+    user_id = auth.uid() 
+    OR EXISTS (SELECT 1 FROM public.book_stalls WHERE user_id = auth.uid() AND approval_status = 'approved')
+    OR public.is_admin()
+  );
+
+CREATE POLICY "Users insert own book requests" ON public.book_requests
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users update own book requests" ON public.book_requests
+  FOR UPDATE TO authenticated USING (
+    user_id = auth.uid() 
+    OR EXISTS (SELECT 1 FROM public.book_stalls WHERE user_id = auth.uid() AND approval_status = 'approved')
+    OR public.is_admin()
+  );
+
+-- Scrap Requests
+CREATE POLICY "Users view own scrap requests" ON public.scrap_requests
+  FOR SELECT TO authenticated USING (
+    user_id = auth.uid() 
+    OR EXISTS (SELECT 1 FROM public.scrap_owners WHERE user_id = auth.uid() AND approval_status = 'approved')
+    OR public.is_admin()
+  );
+
+CREATE POLICY "Users insert own scrap requests" ON public.scrap_requests
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users update own scrap requests" ON public.scrap_requests
+  FOR UPDATE TO authenticated USING (
+    user_id = auth.uid() 
+    OR EXISTS (SELECT 1 FROM public.scrap_owners WHERE user_id = auth.uid() AND approval_status = 'approved')
+    OR public.is_admin()
+  );
+
+-- Offers
+CREATE POLICY "Book offers visibility" ON public.book_offers
+  FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.book_requests WHERE id = request_id AND user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM public.book_stalls WHERE id = stall_id AND user_id = auth.uid())
+    OR public.is_admin()
+  );
+
+CREATE POLICY "Approved stalls can make book offers" ON public.book_offers
+  FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM public.book_stalls WHERE id = stall_id AND user_id = auth.uid() AND approval_status = 'approved')
+  );
+
+CREATE POLICY "Book offers update" ON public.book_offers
+  FOR UPDATE TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.book_requests WHERE id = request_id AND user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM public.book_stalls WHERE id = stall_id AND user_id = auth.uid())
+    OR public.is_admin()
+  );
+
+CREATE POLICY "Scrap offers visibility" ON public.scrap_offers
+  FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.scrap_requests WHERE id = request_id AND user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM public.scrap_owners WHERE id = scrap_owner_id AND user_id = auth.uid())
+    OR public.is_admin()
+  );
+
+CREATE POLICY "Approved scrap dealers can make scrap offers" ON public.scrap_offers
+  FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM public.scrap_owners WHERE id = scrap_owner_id AND user_id = auth.uid() AND approval_status = 'approved')
+  );
+
+-- Transactions & Conversations (Participants only)
+CREATE POLICY "Transactions participant access" ON public.transactions
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR partner_user_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Conversations participant access" ON public.conversations
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR partner_user_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Messages participant access" ON public.messages
+  FOR SELECT TO authenticated USING (
+    EXISTS (
+      SELECT 1 FROM public.conversations c 
+      WHERE c.id = conversation_id AND (c.user_id = auth.uid() OR c.partner_user_id = auth.uid() OR public.is_admin())
+    )
+  );
+
+CREATE POLICY "Messages send by participants" ON public.messages
+  FOR INSERT TO authenticated WITH CHECK (
+    sender_id = auth.uid() AND
+    EXISTS (
+      SELECT 1 FROM public.conversations c 
+      WHERE c.id = conversation_id AND (c.user_id = auth.uid() OR c.partner_user_id = auth.uid())
+    )
+  );
+
+-- Notifications (Owner only)
+CREATE POLICY "User views own notifications" ON public.notifications
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+CREATE POLICY "User updates own notifications" ON public.notifications
+  FOR UPDATE TO authenticated USING (user_id = auth.uid());
+
+-- Payments (Participants only)
+CREATE POLICY "Payment records participant access" ON public.payment_records
+  FOR SELECT TO authenticated USING (
+    EXISTS (
+      SELECT 1 FROM public.transactions t 
+      WHERE t.id = transaction_id AND (t.user_id = auth.uid() OR t.partner_user_id = auth.uid() OR public.is_admin())
+    )
+  );
+
+CREATE POLICY "Payment records update" ON public.payment_records
+  FOR UPDATE TO authenticated USING (
+    EXISTS (
+      SELECT 1 FROM public.transactions t 
+      WHERE t.id = transaction_id AND (t.user_id = auth.uid() OR t.partner_user_id = auth.uid() OR public.is_admin())
+    )
+  );
+
+-- Guidelines & Announcements (Public read, admin write)
+CREATE POLICY "Guidelines readable by all" ON public.guidelines
+  FOR SELECT TO public USING (is_published = true OR public.is_admin());
+
+CREATE POLICY "Guidelines admin manage" ON public.guidelines
+  FOR ALL TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Announcements readable by authenticated" ON public.announcements
+  FOR SELECT TO authenticated USING (is_published = true OR public.is_admin());
+
+CREATE POLICY "Announcements admin manage" ON public.announcements
+  FOR ALL TO authenticated USING (public.is_admin());
+
+-- Complaints & Audit Logs
+CREATE POLICY "Complaints access" ON public.complaints
+  FOR SELECT TO authenticated USING (filed_by = auth.uid() OR against_user_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Complaints filing" ON public.complaints
+  FOR INSERT TO authenticated WITH CHECK (filed_by = auth.uid());
+
+CREATE POLICY "Complaints admin manage" ON public.complaints
+  FOR UPDATE TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Audit logs admin only" ON public.admin_audit_logs
+  FOR ALL TO authenticated USING (public.is_admin());
+
+-- ====================================================================
+-- AUTOMATED TRIGGERS (Sync profiles, notifications & transactions)
+-- ====================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name, phone, is_verified)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    NEW.raw_user_meta_data->>'phone',
+    NEW.email_confirmed_at IS NOT NULL
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    is_verified = (NEW.email_confirmed_at IS NOT NULL);
+
+  -- Assign user role from metadata if specified
+  IF NEW.raw_user_meta_data->>'role' IS NOT NULL THEN
+    INSERT INTO public.user_roles (user_id, role, is_approved)
+    VALUES (
+      NEW.id,
+      NEW.raw_user_meta_data->>'role',
+      CASE WHEN NEW.raw_user_meta_data->>'role' = 'seller' THEN true ELSE false END
+    )
+    ON CONFLICT (user_id, role) DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

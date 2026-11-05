@@ -66,6 +66,8 @@
   
   <!-- Canvas Confetti for celebratory milestone animations -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js"></script>
+  <!-- Supabase JS Client v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-shelf-cream text-slate-800 antialiased min-h-screen flex flex-col font-sans">
 
@@ -131,6 +133,28 @@
         <!-- Account, Role Dashboard & CTA -->
         <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           
+          <!-- Supabase Backend Status Indicator & Setup -->
+          <button 
+            onclick="openSupabaseConfigModal()" 
+            id="supabase-status-badge" 
+            class="bg-emerald-950/90 text-emerald-300 hover:text-white border border-emerald-700/80 hover:border-amber-400 px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+            title="Configure Supabase Live Database Connection"
+          >
+            <span id="supabase-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="supabase-status-text" class="hidden md:inline">Supabase</span>
+          </button>
+
+          <!-- Real-Time Notification Bell -->
+          <button 
+            onclick="openNotificationsModal()" 
+            id="notification-bell-btn" 
+            class="relative text-white hover:text-amber-300 p-1.5 rounded-md bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/80 transition"
+            title="Notifications & Alerts"
+          >
+            <span class="text-base">🔔</span>
+            <span id="notification-unread-count" class="hidden absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shadow-sm animate-bounce">0</span>
+          </button>
+
           <!-- Language Toggle (Preserved with dynamic Kannada / English switch) -->
           <button 
             onclick="toggleLanguage()" 
@@ -1586,7 +1610,7 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-semibold text-slate-700">Password *</label>
-                <button type="button" onclick="alert('Password reset link sent to your registered email.')" class="text-[11px] text-emerald-700 hover:underline">Forgot Password?</button>
+                <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-emerald-700 hover:underline">Forgot Password?</button>
               </div>
               <input type="password" required id="seller-password" value="Password@123" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
@@ -1595,10 +1619,7 @@
               <span>Sign In as Seller / User</span> →
             </button>
 
-            <!-- 1-Click Quick Demo Login Button -->
-            <button type="button" onclick="quickLoginDemo('seller')" class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1.5">
-              <span>⚡</span> 1-Click Quick Login: Priya Sharma (RVCE Student)
-            </button>
+            
           </form>
 
           <div class="text-center pt-2 border-t text-xs text-slate-600">
@@ -1627,7 +1648,7 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-semibold text-slate-700">Password *</label>
-                <button type="button" onclick="alert('Password reset link sent to your bookstore contact.')" class="text-[11px] text-blue-700 hover:underline">Forgot?</button>
+                <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-blue-700 hover:underline">Forgot?</button>
               </div>
               <input type="password" required id="stall-password" value="Password@123" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
@@ -1636,10 +1657,7 @@
               <span>Sign In to Stall Console</span> →
             </button>
 
-            <!-- 1-Click Quick Demo Login Button -->
-            <button type="button" onclick="quickLoginDemo('book_stall')" class="w-full bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1.5">
-              <span>⚡</span> 1-Click Quick Login: Vidyarthi Book House (Avenue Rd)
-            </button>
+            
           </form>
 
           <div class="text-center pt-2 border-t text-xs text-slate-600">
@@ -1668,7 +1686,7 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-semibold text-slate-700">Password *</label>
-                <button type="button" onclick="alert('Password reset link sent to recycler email.')" class="text-[11px] text-amber-800 hover:underline">Forgot?</button>
+                <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-amber-800 hover:underline">Forgot?</button>
               </div>
               <input type="password" required id="raddi-password" value="Password@123" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
@@ -1677,10 +1695,7 @@
               <span>Sign In to Scrap Dealer Console</span> →
             </button>
 
-            <!-- 1-Click Quick Demo Login Button -->
-            <button type="button" onclick="quickLoginDemo('raddi_owner')" class="w-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1.5">
-              <span>⚡</span> 1-Click Quick Login: Karnataka Eco Recyclers
-            </button>
+            
           </form>
 
           <div class="text-center pt-2 border-t text-xs text-slate-600">
@@ -1721,41 +1736,7 @@
               <input type="password" required id="creator-password" value="Admin@2026" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
             </div>
 
-            <!-- MANDATORY WEB CREATOR MASTER SECURITY KEY -->
-            <div class="bg-slate-900 text-white p-3 rounded-xl border border-slate-700 space-y-1.5">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-bold text-amber-400 flex items-center gap-1">
-                  <span>🔐</span> Web Creator Master Security Passkey *
-                </label>
-                <span class="text-[10px] text-slate-400 font-mono">Master Clearance</span>
-              </div>
-              <input 
-                type="text" 
-                required 
-                id="creator-master-key" 
-                placeholder="Enter Web Creator Master Security Key..." 
-                value="CREATOR#SECONDSHELF#2026" 
-                class="w-full text-xs p-2 rounded bg-slate-800 border border-slate-600 text-emerald-300 font-mono font-bold amazon-focus" 
-              />
-              <span class="text-[10px] text-slate-400 block">
-                *Only the website creator possesses this master key. Ordinary logins will be rejected.
-              </span>
-            </div>
-
-            <button type="submit" class="w-full bg-rose-800 hover:bg-rose-900 text-white font-black py-2.5 rounded-lg text-xs shadow-lg transition flex items-center justify-center gap-2 tracking-wide">
-              <span>🛡️</span> Sign In as Admin (Creator Clearance) →
-            </button>
-
-            <!-- Quick Creator Verification Button for Evaluation -->
-            <button type="button" onclick="quickLoginDemo('admin')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1.5">
-              <span>⚡</span> 1-Click Admin Login (Web Creator Clearance)
-            </button>
-          </form>
-
-          <div class="text-[11px] text-slate-500 text-center italic">
-            Audit logging active. All administrative actions and login attempts are permanently recorded.
-          </div>
-        </div>
+            
 
         <!-- 5. REGISTRATION VIEW (No Admin Option!) -->
         <div id="view-portal-signup" class="space-y-4 hidden">
@@ -1892,6 +1873,167 @@
           <button type="submit" class="bg-rose-700 hover:bg-rose-800 text-white font-bold px-4 py-2 rounded text-xs shadow transition">
             Submit Dispute to Admin →
           </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  
+  <!-- ==================================================================== -->
+  <!-- MODAL: DIRECT MESSAGES / TRANSACTION CHAT                            -->
+  <!-- ==================================================================== -->
+  <div id="modal-chat" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full text-slate-900 border border-slate-200 flex flex-col h-[580px] max-h-[90vh]">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-emerald-950 text-white rounded-t-2xl flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">💬</span>
+          <div>
+            <h3 class="font-bold text-sm" id="chat-partner-title">Transaction Chat</h3>
+            <span class="text-[10px] text-emerald-200" id="chat-transaction-subtitle">Ref: Active Deal</span>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-chat')" class="text-emerald-200 hover:text-white text-2xl font-bold">&times;</button>
+      </div>
+
+      <!-- Messages Stream -->
+      <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+        <div class="text-center text-xs text-slate-400 py-8">Loading private conversation...</div>
+      </div>
+
+      <!-- Message Input Form -->
+      <form id="form-chat-send" onsubmit="handleSendMessage(event)" class="p-3 border-t border-slate-200 flex gap-2 bg-white rounded-b-2xl flex-shrink-0">
+        <input 
+          type="text" 
+          id="chat-input-text" 
+          required 
+          placeholder="Type your message..." 
+          class="flex-1 text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" 
+        />
+        <button type="submit" class="bg-shelf-forest hover:bg-shelf-emerald text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow">
+          <span>Send</span>
+          <span>✈️</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: REALTIME NOTIFICATIONS                                        -->
+  <!-- ==================================================================== -->
+  <div id="modal-notifications" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full text-slate-900 border border-slate-200 flex flex-col max-h-[85vh]">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white rounded-t-2xl flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🔔</span>
+          <h3 class="font-bold text-sm">Notifications & Alerts</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="markAllNotificationsAsRead()" class="text-[11px] text-amber-300 hover:underline">Mark all read</button>
+          <button onclick="closeModal('modal-notifications')" class="text-slate-400 hover:text-white text-2xl font-bold">&times;</button>
+        </div>
+      </div>
+
+      <div id="notifications-list-container" class="overflow-y-auto p-4 space-y-2.5 flex-1 divide-y divide-slate-100">
+        <div class="text-center text-xs text-slate-400 py-6">No notifications yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: CONTACT SUPPORT & FILE COMPLAINT                              -->
+  <!-- ==================================================================== -->
+  <div id="modal-complaint" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full text-slate-900 border border-slate-200 p-6 space-y-4">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🛡️</span>
+          <h3 class="font-bold text-base text-slate-900">Support & Dispute Grievance</h3>
+        </div>
+        <button onclick="closeModal('modal-complaint')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+      <form id="form-complaint" onsubmit="handleComplaintSubmit(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Issue Subject *</label>
+          <input type="text" required id="complaint-subject" placeholder="e.g. Payment not received, Condition dispute" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Transaction Ref / Order Number</label>
+          <input type="text" id="complaint-trx-ref" placeholder="e.g. BOK-2026-0001 or SCR-2026-0001" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Detailed Explanation *</label>
+          <textarea required id="complaint-description" rows="4" placeholder="Provide full details of the discrepancy..." class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus"></textarea>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t">
+          <button type="button" onclick="closeModal('modal-complaint')" class="px-3 py-1.5 border rounded text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+          <button type="submit" class="bg-rose-700 hover:bg-rose-800 text-white font-bold px-4 py-1.5 rounded text-xs shadow transition">Submit Complaint →</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: SUPABASE BACKEND CONFIGURATION                                -->
+  <!-- ==================================================================== -->
+  <div id="modal-supabase-config" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full text-slate-900 border border-slate-200 p-6 space-y-4">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">⚡</span>
+          <div>
+            <h3 class="font-bold text-base text-slate-900">Supabase Backend Connection</h3>
+            <p class="text-[11px] text-slate-500">Live PostgreSQL Database & Authentication Setup</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-supabase-config')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <div id="supabase-status-banner" class="p-3 rounded-lg text-xs font-medium flex items-center gap-2 bg-emerald-50 text-emerald-900 border border-emerald-200">
+        <span class="text-base" id="supabase-status-icon">🟢</span>
+        <span id="supabase-status-detail">Checking Supabase connection...</span>
+      </div>
+
+      <form id="form-supabase-config" onsubmit="handleSaveSupabaseConfig(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1">Supabase Project URL *</label>
+          <input type="url" required id="cfg-supabase-url" placeholder="https://xyzcompany.supabase.co" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 font-mono amazon-focus" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1">Supabase Anon Public API Key *</label>
+          <textarea required id="cfg-supabase-key" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." class="w-full text-xs p-2.5 rounded-lg border border-slate-300 font-mono amazon-focus"></textarea>
+          <span class="text-[10px] text-slate-500 block mt-1">Found in your Supabase Dashboard under <strong>Project Settings → API</strong>.</span>
+        </div>
+        <div class="flex justify-between items-center pt-2 border-t">
+          <button type="button" onclick="testSupabaseConnection()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border rounded text-xs font-bold">
+            🔌 Test Connection
+          </button>
+          <div class="flex gap-2">
+            <button type="button" onclick="closeModal('modal-supabase-config')" class="px-3 py-1.5 border rounded text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+            <button type="submit" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-4 py-1.5 rounded text-xs shadow transition">Save & Connect →</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: PASSWORD RESET (Real Supabase Auth Email Dispatch)             -->
+  <!-- ==================================================================== -->
+  <div id="modal-reset-password" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full text-slate-900 border border-slate-200 p-6 space-y-4">
+      <div class="flex items-center justify-between border-b pb-2">
+        <h3 class="font-bold text-sm text-slate-900">Reset Your Password</h3>
+        <button onclick="closeModal('modal-reset-password')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+      <p class="text-xs text-slate-600">Enter your registered email address. Supabase Auth will send you a secure password reset link.</p>
+      <form onsubmit="handlePasswordResetSubmit(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Email Address *</label>
+          <input type="email" required id="reset-email" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t">
+          <button type="button" onclick="closeModal('modal-reset-password')" class="px-3 py-1.5 border rounded text-xs">Cancel</button>
+          <button type="submit" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-4 py-1.5 rounded text-xs shadow">Send Reset Link →</button>
         </div>
       </form>
     </div>
