@@ -78,8 +78,8 @@ const TRANSLATIONS = {
 // 1. SUPABASE CLIENT INITIALIZATION & CONFIG LOADER
 // ====================================================================
 async function initSupabase() {
-  let url = localStorage.getItem('SECOND_SHELF_SUPABASE_URL') || '';
-  let key = localStorage.getItem('SECOND_SHELF_SUPABASE_ANON_KEY') || '';
+  let url = (window.SECOND_SHELF_CONFIG && window.SECOND_SHELF_CONFIG.supabaseUrl) || localStorage.getItem('SECOND_SHELF_SUPABASE_URL') || '';
+  let key = (window.SECOND_SHELF_CONFIG && window.SECOND_SHELF_CONFIG.supabaseAnonKey) || localStorage.getItem('SECOND_SHELF_SUPABASE_ANON_KEY') || '';
 
   // Attempt to fetch from /api/config if not found in localStorage
   if (!url || !key) {
