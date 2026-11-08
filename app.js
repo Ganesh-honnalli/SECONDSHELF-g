@@ -259,10 +259,22 @@ async function refreshRequestsAndOffers() {
     const { data: compData } = await supabase.from('complaints').select('*').order('created_at', { ascending: false });
     if (compData) state.complaints = compData;
 
-    // Audit logs (for admin)
+    // Audit logs & session entries (for admin)
     if (state.currentUser && state.currentUser.role === 'admin') {
-      const { data: auditData } = await supabase.from('admin_audit_logs').select('*').order('created_at', { ascending: false }).limit(25);
-      if (auditData) state.auditLogs = auditData;
+      const { data: auditData } = await supabase.from('admin_audit_logs').select('*').order('created_at', { ascending: false }).limit(100);
+      const localLogs = JSON.parse(localStorage.getItem('SECOND_SHELF_USER_SESSIONS') || '[]');
+      const combined = [...(auditData || []), ...localLogs];
+      const unique = [];
+      const seen = new Set();
+      for (const item of combined) {
+        const key = item.id || (item.created_at + '_' + item.action);
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(item);
+        }
+      }
+      unique.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      state.auditLogs = unique;
     }
 
     // Refresh active UI
@@ -340,10 +352,62 @@ async function resolveUserProfile(user) {
 
     updateUserRoleUI();
     showToast(`Signed in as ${state.currentUser.name} (${getRoleTitle(primaryRole)})`, 'success');
+    await logUserSessionEvent('entry');
 
   } catch (err) {
     console.error('Error resolving user profile:', err);
   }
+}
+
+// User Entry (Login) and Exit (Logout) Session Logger
+async function logUserSessionEvent(event) {
+  if (!state.currentUser) return;
+  const user = state.currentUser;
+  const now = new Date().toISOString();
+  const entryId = 'sess_' + Date.now();
+
+  const payload = {
+    action: event === 'entry' ? 'user_entry' : 'user_exit',
+    target_type: 'user_session',
+    target_id: user.id,
+    details: {
+      user_id: user.id,
+      user_email: user.email,
+      user_name: user.name,
+      role: user.role,
+      event: event === 'entry' ? 'login' : 'logout',
+      status: event === 'entry' ? 'active' : 'logged_out',
+      timestamp: now
+    }
+  };
+
+  // 1. Try to record in Supabase admin_audit_logs if available
+  if (supabase) {
+    try {
+      await supabase.from('admin_audit_logs').insert([payload]);
+    } catch (e) {
+      console.warn('Could not write remote audit log:', e);
+    }
+  }
+
+  // 2. Persist in local storage session logs
+  try {
+    let localLogs = JSON.parse(localStorage.getItem('SECOND_SHELF_USER_SESSIONS') || '[]');
+    localLogs.unshift({
+      id: entryId,
+      created_at: now,
+      ...payload
+    });
+    if (localLogs.length > 100) localLogs = localLogs.slice(0, 100);
+    localStorage.setItem('SECOND_SHELF_USER_SESSIONS', JSON.stringify(localLogs));
+
+    // Also add to active in-memory state.auditLogs
+    state.auditLogs.unshift({
+      id: entryId,
+      created_at: now,
+      ...payload
+    });
+  } catch (e) {}
 }
 
 // 1. User / Seller Login
@@ -691,6 +755,9 @@ async function handlePasswordResetSubmit(event) {
 
 // Sign Out
 async function logout() {
+  if (state.currentUser) {
+    await logUserSessionEvent('exit');
+  }
   if (supabase) {
     await supabase.auth.signOut();
   }
@@ -2055,6 +2122,9 @@ function renderAdminDashboard(container) {
         <button onclick="setAdminTab('users')" id="admin-tab-users" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           User Management
         </button>
+        <button onclick="setAdminTab('sessions')" id="admin-tab-sessions" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
+          🚪 User Entry & Exit Logs
+        </button>
         <button onclick="setAdminTab('website')" id="admin-tab-website" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           Website Submissions & Deals
         </button>
@@ -2075,7 +2145,7 @@ function renderAdminDashboard(container) {
 }
 
 function setAdminTab(tab) {
-  ['approvals', 'guidelines', 'users', 'website', 'complaints', 'audit'].forEach(t => {
+  ['approvals', 'guidelines', 'users', 'sessions', 'website', 'complaints', 'audit'].forEach(t => {
     const btn = document.getElementById(`admin-tab-${t}`);
     if (btn) {
       if (t === tab) {
@@ -2198,6 +2268,141 @@ function setAdminTab(tab) {
               <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status}</span>
             </div>
           `).join('')}
+        </div>
+      </div>
+    `;
+  } else if (tab === 'sessions') {
+    const sessionLogs = state.auditLogs.filter(l => l.target_type === 'user_session' || l.action === 'user_entry' || l.action === 'user_exit');
+    const totalEntries = sessionLogs.filter(l => l.action === 'user_entry').length;
+    const totalExits = sessionLogs.filter(l => l.action === 'user_exit').length;
+
+    // Determine current active users
+    const userLastEvent = {};
+    [...sessionLogs].reverse().forEach(l => {
+      const email = l.details?.user_email || 'unknown';
+      userLastEvent[email] = {
+        name: l.details?.user_name || email.split('@')[0],
+        email: email,
+        role: l.details?.role || 'user',
+        lastAction: l.action,
+        lastTime: l.created_at || l.details?.timestamp || new Date().toISOString()
+      };
+    });
+    const activeUsers = Object.values(userLastEvent).filter(u => u.lastAction === 'user_entry');
+
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <span class="text-base">🚪</span> User Entry & Exit Activity Monitor
+              <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Live PostgreSQL</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">Live monitoring of user sign-ins (Entry), sign-outs (Exit), active sessions, and timestamps stored in Supabase PostgreSQL.</p>
+          </div>
+          <button onclick="refreshRequestsAndOffers().then(() => setAdminTab('sessions'))" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-xs font-bold border flex items-center gap-1 self-start shadow-sm">
+            🔄 Refresh Sessions
+          </button>
+        </div>
+
+        <!-- Metric Summary Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+            <div class="text-2xl font-black text-emerald-700">${activeUsers.length}</div>
+            <div class="text-[11px] font-bold text-emerald-950 mt-1">🟢 Active Now (Online)</div>
+          </div>
+          <div class="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-center">
+            <div class="text-2xl font-black text-blue-700">${totalEntries}</div>
+            <div class="text-[11px] font-bold text-blue-950 mt-1">📥 Total Entries (Logins)</div>
+          </div>
+          <div class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-center">
+            <div class="text-2xl font-black text-rose-700">${totalExits}</div>
+            <div class="text-[11px] font-bold text-rose-950 mt-1">📤 Total Exits (Logouts)</div>
+          </div>
+          <div class="p-3.5 bg-purple-50 border border-purple-200 rounded-xl text-center">
+            <div class="text-2xl font-black text-purple-700">${Object.keys(userLastEvent).length}</div>
+            <div class="text-[11px] font-bold text-purple-950 mt-1">👥 Unique Users Logged</div>
+          </div>
+        </div>
+
+        <!-- Currently Logged In (Online) -->
+        ${activeUsers.length > 0 ? `
+          <div class="border border-emerald-300 bg-emerald-50/50 rounded-xl p-4">
+            <h4 class="font-bold text-xs text-emerald-950 mb-2.5 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Currently Logged In (${activeUsers.length} Online)
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              ${activeUsers.map(u => `
+                <div class="bg-white p-3 rounded-lg border border-emerald-200 shadow-sm text-xs flex items-center justify-between">
+                  <div>
+                    <div class="font-bold text-slate-900">${u.name}</div>
+                    <div class="text-[11px] text-slate-500">${u.email}</div>
+                  </div>
+                  <div class="text-right">
+                    <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded capitalize">${u.role}</span>
+                    <div class="text-[10px] text-slate-400 mt-1">${new Date(u.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Complete Entry & Exit Activity Table -->
+        <div>
+          <h4 class="font-bold text-xs text-slate-800 mb-2">Chronological User Entry & Exit Timeline</h4>
+          ${sessionLogs.length === 0 ? `
+            <div class="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed">
+              No session logs recorded yet. When users sign in (Entry) or sign out (Exit), their events will be recorded here in real time.
+            </div>
+          ` : `
+            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-700 font-bold border-b text-[11px]">
+                    <th class="p-3">User & Email</th>
+                    <th class="p-3">Portal Role</th>
+                    <th class="p-3">Event Type</th>
+                    <th class="p-3">Timestamp</th>
+                    <th class="p-3">Session State</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium text-slate-700">
+                  ${sessionLogs.map(l => {
+                    const isEntry = l.action === 'user_entry';
+                    const d = l.details || {};
+                    const roleTitle = getRoleTitle(d.role || 'user');
+                    const timeStr = new Date(l.created_at || d.timestamp).toLocaleString();
+                    return `
+                      <tr class="hover:bg-slate-50 transition">
+                        <td class="p-3">
+                          <strong class="text-slate-900">${d.user_name || d.user_email || 'User'}</strong>
+                          <div class="text-[10px] text-slate-500">${d.user_email || '—'}</div>
+                        </td>
+                        <td class="p-3">
+                          <span class="bg-slate-100 text-slate-800 font-semibold px-2 py-0.5 rounded text-[10px]">${roleTitle}</span>
+                        </td>
+                        <td class="p-3">
+                          <span class="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded text-[11px] ${isEntry ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                            ${isEntry ? '📥 ENTRY (Sign In)' : '📤 EXIT (Sign Out)'}
+                          </span>
+                        </td>
+                        <td class="p-3 text-slate-600 font-mono text-[11px]">
+                          ${timeStr}
+                        </td>
+                        <td class="p-3">
+                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${isEntry ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-600'}">
+                            ${isEntry ? '🟢 Active' : '⚪ Exited'}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
         </div>
       </div>
     `;

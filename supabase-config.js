@@ -1,11 +1,9 @@
 // ====================================================================
 // SECOND SHELF - Supabase Public Client Configuration
-// This file connects the GitHub Pages frontend to your Supabase project.
-// The 'anon' key is public and safe for frontend client use with RLS.
-// NEVER put your service_role secret key here.
+// Connected to Live Supabase Project: taujwlvvuxbsfqiemhgv
 // ====================================================================
 
 window.SECOND_SHELF_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://taujwlvvuxbsfqiemhgv.supabase.co',
+  supabaseAnonKey: 'sb_publishable_RoDhwATknYzsKDsQ8G4ugw_VR3elBQl'
 };
