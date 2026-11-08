@@ -34,13 +34,14 @@ const state = {
   scrapOwners: [],
   usersList: [],
   activeConversation: null,
-  activeChatSubscription: null
+  activeChatSubscription: null,
+  currentConfirmingReq: null
 };
 
 // Global Supabase Client instance
 let supabase = null;
 
-// Kannada Language Translations Map
+// Kannada & English Language Translations Map
 const TRANSLATIONS = {
   en: {
     tagline: 'Give Your Old Books a Second Life',
@@ -58,18 +59,18 @@ const TRANSLATIONS = {
     privacy: 'DPDP Privacy (India)'
   },
   kn: {
-    tagline: 'ನಿಮ್ಮ ಹಳೆಯ ಪುಸ್ತಕಗಳಿಗೆ ಹೊಸ ಜೀವ ನೀಡಿ',
-    heroTitle: 'ಹಳೆಯ ಪುಸ್ತಕಗಳನ್ನು ಮಾರಿ.<br/>ಕಾಗದ ಮರುಬಳಕೆ ಮಾಡಿ.<br/><span class="text-shelf-yellow">ಹಣ ಗಳಿಸಿ.</span>',
-    heroSubtitle: 'ನೋಂದಾಯಿತ ಪುಸ್ತಕ ಮಳಿಗೆಗಳು ಮತ್ತು ಪ್ರಮಾಣೀಕೃತ ಮರುಬಳಕೆ ಸ್ಕ್ರ್ಯಾಪ್ ವ್ಯಾಪಾರಿಗಳೊಂದಿಗೆ ನೇರವಾಗಿ ಸಂಪರ್ಕ ಸಾಧಿಸಿ. ಪಾರದರ್ಶಕ ಬೆಲೆ ಅಂದಾಜು, ಮನೆ ಬಾಗಿಲಿನ ಸಂಗ್ರಹಣೆ ಮತ್ತು ಸುರಕ್ಷಿತ ಪಾವತಿ ದೃಢೀಕರಣ.',
-    sellBooksBtn: 'ಹಳೆಯ ಪುಸ್ತಕ ಮಾರಿ',
-    sellRaddiBtn: 'ಸ್ಕ್ರ್ಯಾಪ್ ಮಾರಿ (ಕನಿಷ್ಠ 10 ಕೆಜಿ)',
+    tagline: 'ಹಳೆಯ ಪುಸ್ತಕಗಳಿಗೆ ಹೊಸ ಜೀವನ ನೀಡಿ',
+    heroTitle: 'ನಿಮ್ಮ ಹಳೆಯ ಪುಸ್ತಕಗಳನ್ನು ಮಾರಿ.<br/>ಕಾಗದವನ್ನು ಮರುಬಳಕೆ ಮಾಡಿ.<br/><span class="text-shelf-yellow">ಹಣ ಗಳಿಸಿ.</span>',
+    heroSubtitle: 'ಪ್ರಮಾಣೀಕೃತ ಸ್ಥಳೀಯ ಪುಸ್ತಕ ಮಳಿಗೆಗಳು ಮತ್ತು ಪರಿಶೀಲಿಸಿದ ಸ್ಕ್ರ್ಯಾಪ್ ಡೀಲರ್‌ಗಳೊಂದಿಗೆ ನೇರವಾಗಿ ಸಂಪರ್ಕ ಸಾಧಿಸಿ. ಪಾರದರ್ಶಕ ಸ್ಥಿತಿ ಅಂದಾಜುಗಳು, ಮನೆ ಬಾಗಿಲಿನ ಪಿಕಪ್ ಅಥವಾ ಕೌಂಟರ್ ಹಸ್ತಾಂತರ, ಮತ್ತು ಸುರಕ್ಷಿತ ಇಬ್ಬರ ಪಾವತಿ ದೃಢೀಕರಣ.',
+    sellBooksBtn: 'ಹಳೆಯ ಪುಸ್ತಕಗಳನ್ನು ಮಾರಿ',
+    sellRaddiBtn: 'ಮರುಬಳಕೆ ಸ್ಕ್ರ್ಯಾಪ್ ಮಾರಿ (ಕನಿಷ್ಠ 10 ಕೆಜಿ)',
     home: 'ಮುಖಪುಟ',
     usedBooks: 'ಬಳಸಿದ ಪುಸ್ತಕಗಳು',
     raddi: 'ಮರುಬಳಕೆ ಸ್ಕ್ರ್ಯಾಪ್ (10+ ಕೆಜಿ)',
-    submitBook: 'ಪುಸ್ತಕ ನಮೂದಿಸಿ',
+    submitBook: 'ಬಳಸಿದ ಪುಸ್ತಕ ಸಲ್ಲಿಸಿ',
     submitRaddi: 'ಮರುಬಳಕೆ ಸ್ಕ್ರ್ಯಾಪ್ ಪಿಕಪ್ ಕೋರಿ',
     estimator: 'ಬೆಲೆ ಅಂದಾಜು',
-    paymentRules: 'ಪಾವತಿ ನಿಯಮಗಳು',
+    paymentRules: 'ಪಾವತಿ ದೃಢೀಕರಣ ನಿಯಮಗಳು',
     privacy: 'ಡಿಪಿಡಿಪಿ ಗೌಪ್ಯತೆ (ಭಾರತ)'
   }
 };
@@ -81,7 +82,7 @@ async function initSupabase() {
   let url = (window.SECOND_SHELF_CONFIG && window.SECOND_SHELF_CONFIG.supabaseUrl) || localStorage.getItem('SECOND_SHELF_SUPABASE_URL') || '';
   let key = (window.SECOND_SHELF_CONFIG && window.SECOND_SHELF_CONFIG.supabaseAnonKey) || localStorage.getItem('SECOND_SHELF_SUPABASE_ANON_KEY') || '';
 
-  // Attempt to fetch from /api/config if not found in localStorage
+  // Attempt to fetch from /api/config if not found in localStorage or window
   if (!url || !key) {
     try {
       const res = await fetch('/api/config');
@@ -93,7 +94,7 @@ async function initSupabase() {
         }
       }
     } catch (e) {
-      // Running standalone/offline or file://
+      // Standalone/offline or static file serving
     }
   }
 
@@ -108,7 +109,7 @@ async function initSupabase() {
       if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
       if (statusText) statusText.textContent = 'PostgreSQL Live';
 
-      // Load initial live data
+      // Load initial live data from PostgreSQL
       await loadInitialDataFromSupabase();
 
       // Check current auth session
@@ -118,6 +119,19 @@ async function initSupabase() {
         await resolveUserProfile(session.user);
       }
 
+      // Listen for auth state changes
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          state.currentSession = session;
+          await resolveUserProfile(session.user);
+        } else if (event === 'SIGNED_OUT') {
+          state.currentUser = null;
+          state.currentSession = null;
+          updateUserRoleUI();
+          showSection('home');
+        }
+      });
+
       // Initialize real-time listeners
       setupRealtimeSubscriptions();
 
@@ -125,32 +139,43 @@ async function initSupabase() {
       console.warn('Supabase initialization error:', err);
       if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-rose-500';
       if (statusText) statusText.textContent = 'Supabase Error';
+      loadFallbackData();
     }
   } else {
-    // Missing credentials - update badge to prompt user
+    // Missing credentials - display connection badge in header
     if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
     if (statusText) statusText.textContent = 'Connect Backend';
     loadFallbackData();
   }
 }
 
-// Fallback initial data in case credentials are pending entry
+// Fallback initial data for preview when cloud credentials are not yet configured
 function loadFallbackData() {
   state.categories = [
-    { id: '1', name: 'Degree Books', slug: 'degree-books', count: 142, active: true },
-    { id: '2', name: 'PUC Books', slug: 'puc-books', count: 89, active: true },
-    { id: '3', name: 'Class 10th / SSLC Books', slug: 'sslc-10th-books', count: 76, active: true },
-    { id: '4', name: 'School Books', slug: 'school-books', count: 54, active: true },
-    { id: '5', name: 'Engineering Books', slug: 'engineering-books', count: 210, active: true },
-    { id: '6', name: 'Medical and Competitive Exam Books', slug: 'medical-competitive-exam', count: 118, active: true },
-    { id: '7', name: 'Story Books and Novels', slug: 'story-books-novels', count: 95, active: true },
-    { id: '8', name: 'Other Educational Books', slug: 'other-educational', count: 43, active: true }
+    { id: '1', name: 'Degree Books', slug: 'degree-books', description: 'Undergraduate and postgraduate college textbooks (B.Com, B.Sc, BA, BCA, BBA)', count: 142, is_active: true },
+    { id: '2', name: 'PUC Books', slug: 'puc-books', description: 'Karnataka Pre-University College (1st & 2nd PUC Science, Commerce, Arts)', count: 89, is_active: true },
+    { id: '3', name: 'Class 10th / SSLC Books', slug: 'sslc-10th-books', description: '10th Standard / SSLC state syllabus and CBSE textbooks', count: 76, is_active: true },
+    { id: '4', name: 'School Books', slug: 'school-books', description: 'Primary and high school textbooks (Grades 1 to 9)', count: 54, is_active: true },
+    { id: '5', name: 'Engineering Books', slug: 'engineering-books', description: 'VTU and autonomous engineering syllabus textbooks (CSE, ECE, Mech, Civil)', count: 210, is_active: true },
+    { id: '6', name: 'Medical and Competitive Exam Books', slug: 'medical-competitive-exam', description: 'MBBS, BDS, NEET, JEE, UPSC, KPSC and Banking exam preparation books', count: 118, is_active: true },
+    { id: '7', name: 'Story Books and Novels', slug: 'story-books-novels', description: 'English, Kannada, Hindi literature, fiction, and non-fiction novels', count: 95, is_active: true },
+    { id: '8', name: 'Other Educational Books', slug: 'other-educational', description: 'Dictionaries, encyclopedias, reference guides, and skill development', count: 43, is_active: true }
   ];
+
+  state.guidelines = [
+    { id: '1', title: 'Anti-Piracy & Textbook Submission Rules', section_page: 'textbook_submission', content: 'SECOND SHELF strictly prohibits photocopied books, counterfeit prints, and illegally duplicated study materials. Only genuine publisher editions with all pages intact are accepted.', is_published: true },
+    { id: '2', title: 'Fair Valuation Percentage Caps', section_page: 'valuation_rules', content: 'Estimated offers are calculated from the declared purchase price and physical condition: Like New (up to 30%), Good (up to 30%), Used (up to 20%), Old/Damaged (up to 15%). Book stalls cannot exceed the condition cap.', is_published: true },
+    { id: '3', title: 'Strict 10 kg Minimum Scrap Requirement', section_page: 'scrap_weight', content: 'In accordance with recycling logistics and vendor viability, waste paper submissions below 10 kg cannot be processed. Doorstep weighing must register 10 kg or higher.', is_published: true },
+    { id: '4', title: 'Pickup & Handover Guidelines', section_page: 'pickup_instructions', content: 'For counter handovers, sellers have 7 days to visit the selected bookstore. For scrap collections, verified scrap owners arrive with calibrated digital weighing scales.', is_published: true },
+    { id: '5', title: 'Two-Party Payment Confirmation Policy', section_page: 'payment_guidelines', content: 'All payments occur directly between seller and buyer. The order is marked Completed only when the seller clicks "Confirm Payment Received".', is_published: true }
+  ];
+
   renderDemoBookListings();
   renderBookDirectory();
+  renderRaddiDirectory();
 }
 
-// Load real database data from Supabase
+// Load real database data from PostgreSQL via Supabase
 async function loadInitialDataFromSupabase() {
   if (!supabase) return;
 
@@ -159,10 +184,11 @@ async function loadInitialDataFromSupabase() {
     const { data: catData } = await supabase.from('textbook_categories').select('*').eq('is_active', true);
     if (catData && catData.length > 0) {
       state.categories = catData;
-      renderBookDirectory();
     } else {
       loadFallbackData();
     }
+    renderBookDirectory();
+    renderDemoBookListings();
 
     // 2. Valuation Rules
     const { data: valData } = await supabase.from('valuation_rules').select('*');
@@ -179,14 +205,14 @@ async function loadInitialDataFromSupabase() {
     const { data: annData } = await supabase.from('announcements').select('*').eq('is_published', true);
     if (annData) state.announcements = annData;
 
-    // 4. Stalls & Scrap Owners (Approved)
+    // 4. Stalls & Scrap Owners
     const { data: stallData } = await supabase.from('book_stalls').select('*');
     if (stallData) state.bookStalls = stallData;
 
     const { data: scrapData } = await supabase.from('scrap_owners').select('*');
     if (scrapData) state.scrapOwners = scrapData;
 
-    // 5. Active Submissions
+    // 5. Active Submissions & Offers
     await refreshRequestsAndOffers();
 
   } catch (err) {
@@ -229,10 +255,21 @@ async function refreshRequestsAndOffers() {
       }
     }
 
-    // Update active UI
+    // Complaints (for admin or user)
+    const { data: compData } = await supabase.from('complaints').select('*').order('created_at', { ascending: false });
+    if (compData) state.complaints = compData;
+
+    // Audit logs (for admin)
+    if (state.currentUser && state.currentUser.role === 'admin') {
+      const { data: auditData } = await supabase.from('admin_audit_logs').select('*').order('created_at', { ascending: false }).limit(25);
+      if (auditData) state.auditLogs = auditData;
+    }
+
+    // Refresh active UI
     if (state.currentUser) {
       renderCurrentDashboard();
     }
+    renderBookDirectory();
     renderRaddiDirectory();
   } catch (err) {
     console.warn('Error refreshing requests:', err);
@@ -243,7 +280,6 @@ async function refreshRequestsAndOffers() {
 function setupRealtimeSubscriptions() {
   if (!supabase) return;
 
-  // Real-time channel for notifications, offers and payments
   supabase.channel('public:table-updates')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, payload => {
       if (state.currentUser && payload.new && payload.new.user_id === state.currentUser.id) {
@@ -259,6 +295,9 @@ function setupRealtimeSubscriptions() {
       refreshRequestsAndOffers();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+      refreshRequestsAndOffers();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_records' }, () => {
       refreshRequestsAndOffers();
     })
     .subscribe();
@@ -450,7 +489,7 @@ async function handleRaddiLogin(event) {
   openCurrentRoleDashboard();
 }
 
-// 4. Admin Login (Secure Server-Side Verification — Only 1 Admin Account)
+// 4. Admin Login (Secure Server-Side Verification — Strictly 1 Provisioned Admin Account)
 async function handleCreatorAdminLogin(event) {
   if (event) event.preventDefault();
   const emailInput = document.getElementById('creator-email')?.value?.trim();
@@ -489,7 +528,7 @@ async function handleCreatorAdminLogin(event) {
     return;
   }
 
-  // Log successful admin authentication
+  // Log successful admin authentication to audit log
   await supabase.from('admin_audit_logs').insert({
     admin_id: data.user.id,
     action: 'ADMIN_AUTHENTICATED',
@@ -503,7 +542,7 @@ async function handleCreatorAdminLogin(event) {
   openCurrentRoleDashboard();
 }
 
-// Registration Handler with Real Email Verification
+// Registration Handler with Real Email Verification & 18+ Check
 async function handleSignupSubmit(event) {
   if (event) event.preventDefault();
   const name = document.getElementById('signup-name')?.value?.trim();
@@ -511,15 +550,15 @@ async function handleSignupSubmit(event) {
   const password = document.getElementById('signup-password')?.value;
   const phone = document.getElementById('signup-phone')?.value?.trim();
   const role = document.getElementById('signup-role')?.value || 'seller';
-  const ageCheck = document.getElementById('signup-age-check')?.checked;
+  const ageCheck = document.getElementById('signup-age-confirm')?.checked || document.getElementById('signup-age-check')?.checked;
 
   if (!ageCheck) {
-    showToast('Age Confirmation Required: You must be 18 years or older to register.', 'error');
+    showToast('Age Confirmation Required: You must be 18 years or older to register under DPDP compliance.', 'error');
     return;
   }
 
   if (!supabase) {
-    showToast('Supabase backend not configured. Please click "Supabase" in header to connect.', 'error');
+    showToast('Supabase backend not configured. Please click "Supabase" in header to connect your database.', 'error');
     openSupabaseConfigModal();
     return;
   }
@@ -554,7 +593,7 @@ async function handleSignupSubmit(event) {
 
     await supabase.from('book_stalls').insert({
       user_id: userId,
-      stall_name: stallName || name + ' Books',
+      stall_name: stallName || (name + ' Book House'),
       owner_name: name,
       phone: phone,
       licence_number: licence || 'PENDING',
@@ -570,7 +609,7 @@ async function handleSignupSubmit(event) {
 
     await supabase.from('scrap_owners').insert({
       user_id: userId,
-      business_name: bizName || name + ' Recyclers',
+      business_name: bizName || (name + ' Eco Recyclers'),
       owner_name: name,
       phone: phone,
       licence_number: licence || 'PENDING',
@@ -582,7 +621,24 @@ async function handleSignupSubmit(event) {
   }
 
   closeModal('modal-auth');
-  showToast(`Registration Successful! Verification email sent to ${email}. Please verify your email before logging in.`, 'success');
+  showToast(`Registration Successful! Verification email sent to ${email}. Please check your inbox and verify before logging in.`, 'success');
+}
+
+// Dynamic Registration Role Change Helper
+function handleSignupRoleChange(role) {
+  const bizFields = document.getElementById('signup-business-fields');
+  const label = document.getElementById('signup-biz-name-label');
+  if (!bizFields) return;
+
+  if (role === 'book_stall') {
+    bizFields.classList.remove('hidden');
+    if (label) label.textContent = 'Book Store / Stall Name *';
+  } else if (role === 'raddi_owner') {
+    bizFields.classList.remove('hidden');
+    if (label) label.textContent = 'Scrap Recycling Yard / Business Name *';
+  } else {
+    bizFields.classList.add('hidden');
+  }
 }
 
 // Real Password Reset Request
@@ -644,8 +700,8 @@ async function handleBookSubmit(event) {
   const prices = Array.from(form.querySelectorAll('[name="item_price"]')).map(i => parseFloat(i.value) || 0);
   const copiesList = Array.from(form.querySelectorAll('[name="item_copies"]')).map(i => parseInt(i.value) || 1);
 
-  const handover = form.querySelector('[name="handover_method"]')?.value || 'direct_stall_handover';
-  const pickupAddress = document.getElementById('book-pickup-address')?.value || 'Self-handover';
+  const handover = form.querySelector('[name="handover_method"]:checked')?.value || 'direct_stall_handover';
+  const pickupAddress = document.getElementById('book-seller-address')?.value || document.getElementById('book-pickup-address')?.value || 'Self-handover';
   const sellerPhone = document.getElementById('book-seller-phone')?.value || state.currentUser.phone;
 
   let grandOriginalPrice = 0;
@@ -691,7 +747,7 @@ async function handleBookSubmit(event) {
           await supabase.from('notifications').insert({
             user_id: s.user_id,
             title: 'New Book Request Available',
-            message: `${titles[0]} by ${authors[0]} submitted in ${categories[0]}. Est payout: ₹${grandEstimatedPayout.toFixed(2)}`,
+            message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`,
             notification_type: 'new_book_request',
             reference_id: newReq.id
           });
@@ -819,17 +875,61 @@ function validateRaddiWeight(input) {
 // 5. OFFERS, ACCEPTANCE & TWO-PARTY SETTLEMENT WORKFLOW
 // ====================================================================
 
+// Open Make Offer Modal
+function openSendOfferModal(type, reqId, maxCap = 0, estWeight = 20) {
+  const reqIdEl = document.getElementById('offer-target-req-id') || document.getElementById('offer-req-id');
+  const reqTypeEl = document.getElementById('offer-target-type') || document.getElementById('offer-req-type');
+  const maxCapEl = document.getElementById('offer-max-cap');
+  const maxCapDisp = document.getElementById('offer-max-cap-display');
+  const rateField = document.getElementById('offer-rate-field');
+  const capBanner = document.getElementById('offer-cap-banner');
+  const amountInput = document.getElementById('offer-amount-input') || document.getElementById('offer-book-amount');
+
+  if (reqIdEl) reqIdEl.value = reqId;
+  if (reqTypeEl) reqTypeEl.value = type;
+  if (maxCapEl) maxCapEl.value = maxCap;
+  if (maxCapDisp) maxCapDisp.textContent = '₹' + parseFloat(maxCap).toFixed(2);
+
+  if (type === 'book') {
+    if (capBanner) capBanner.classList.remove('hidden');
+    if (rateField) rateField.classList.add('hidden');
+    if (amountInput) {
+      amountInput.value = maxCap > 0 ? maxCap.toFixed(2) : '300.00';
+      amountInput.max = maxCap > 0 ? maxCap : 99999;
+    }
+  } else {
+    if (capBanner) capBanner.classList.add('hidden');
+    if (rateField) rateField.classList.remove('hidden');
+    const rateEl = document.getElementById('offer-rate-kg');
+    const rate = rateEl ? (parseFloat(rateEl.value) || 14) : 14;
+    if (amountInput) amountInput.value = (estWeight * rate).toFixed(2);
+  }
+
+  document.getElementById('modal-send-offer')?.classList.remove('hidden');
+}
+
+function recalcRaddiOfferTotal() {
+  const rate = parseFloat(document.getElementById('offer-rate-kg')?.value) || 0;
+  const reqId = document.getElementById('offer-target-req-id')?.value || document.getElementById('offer-req-id')?.value;
+  const scrapReq = state.wasteRequests.find(r => r.id === reqId);
+  const weight = scrapReq ? (parseFloat(scrapReq.estimated_weight_kg) || 20) : 20;
+
+  const total = rate * weight;
+  const amountInput = document.getElementById('offer-amount-input');
+  if (amountInput) amountInput.value = total.toFixed(2);
+}
+
 // Stall or Scrap Owner Submits an Offer
 async function handleSendOfferSubmit(event) {
   if (event) event.preventDefault();
 
-  const reqId = document.getElementById('offer-req-id')?.value;
-  const reqType = document.getElementById('offer-req-type')?.value;
+  const reqId = document.getElementById('offer-target-req-id')?.value || document.getElementById('offer-req-id')?.value;
+  const reqType = document.getElementById('offer-target-type')?.value || document.getElementById('offer-req-type')?.value;
+  const amount = parseFloat(document.getElementById('offer-amount-input')?.value) || 0;
+  const reason = document.getElementById('offer-reason')?.value?.trim();
 
   if (reqType === 'book') {
-    const amount = parseFloat(document.getElementById('offer-book-amount')?.value) || 0;
     const maxCap = parseFloat(document.getElementById('offer-max-cap')?.value) || 99999;
-    const reason = document.getElementById('offer-lower-reason')?.value?.trim();
 
     if (amount > maxCap) {
       showToast(`Offer exceeds maximum valuation cap of ₹${maxCap.toFixed(2)}.`, 'error');
@@ -858,6 +958,18 @@ async function handleSendOfferSubmit(event) {
       }
 
       await supabase.from('book_requests').update({ status: 'Offer Received' }).eq('id', reqId);
+
+      // Notify seller
+      const req = state.bookRequests.find(r => r.id === reqId);
+      if (req) {
+        await supabase.from('notifications').insert({
+          user_id: req.user_id,
+          title: 'New Offer Received for Book',
+          message: `Stall offer of ₹${amount.toFixed(2)} received for ${req.title}.`,
+          notification_type: 'new_offer',
+          reference_id: reqId
+        });
+      }
     }
 
     closeModal('modal-send-offer');
@@ -865,7 +977,6 @@ async function handleSendOfferSubmit(event) {
 
   } else if (reqType === 'raddi') {
     const rateKg = parseFloat(document.getElementById('offer-rate-kg')?.value) || 0;
-    const totalEst = parseFloat(document.getElementById('offer-raddi-total-val')?.textContent?.replace('₹', '')) || 0;
 
     if (rateKg <= 0) {
       showToast('Please enter a valid rate per kg.', 'error');
@@ -878,7 +989,7 @@ async function handleSendOfferSubmit(event) {
         request_id: reqId,
         scrap_owner_id: scrap ? scrap.id : state.scrapOwners[0]?.id,
         rate_per_kg: rateKg,
-        total_estimated_amount: totalEst,
+        total_estimated_amount: amount,
         status: 'Pending'
       });
 
@@ -888,6 +999,18 @@ async function handleSendOfferSubmit(event) {
       }
 
       await supabase.from('scrap_requests').update({ status: 'Offer Received' }).eq('id', reqId);
+
+      // Notify seller
+      const req = state.wasteRequests.find(r => r.id === reqId);
+      if (req) {
+        await supabase.from('notifications').insert({
+          user_id: req.user_id,
+          title: 'New Scrap Quote Received',
+          message: `Scrap dealer proposed ₹${rateKg}/kg (Total Est: ₹${amount.toFixed(2)}) for your request.`,
+          notification_type: 'new_offer',
+          reference_id: reqId
+        });
+      }
     }
 
     closeModal('modal-send-offer');
@@ -937,6 +1060,15 @@ async function acceptOffer(type, reqId, offerId) {
             user_id: state.currentUser.id,
             partner_user_id: stallUserId
           });
+
+          // Notify stall owner
+          await supabase.from('notifications').insert({
+            user_id: stallUserId,
+            title: 'Offer Accepted by Seller!',
+            message: `Seller accepted your offer of ₹${offer?.offered_amount}. Direct messaging and order details are now open.`,
+            notification_type: 'offer_accepted',
+            reference_id: trx.id
+          });
         }
 
       } else if (type === 'raddi') {
@@ -969,6 +1101,15 @@ async function acceptOffer(type, reqId, offerId) {
             user_id: state.currentUser.id,
             partner_user_id: scrapUserId
           });
+
+          // Notify scrap owner
+          await supabase.from('notifications').insert({
+            user_id: scrapUserId,
+            title: 'Scrap Quote Accepted!',
+            message: `Seller accepted your rate quote. Pickup address and direct chat unlocked.`,
+            notification_type: 'offer_accepted',
+            reference_id: trx.id
+          });
         }
       }
 
@@ -983,13 +1124,27 @@ async function acceptOffer(type, reqId, offerId) {
 }
 
 // Partner Records Payment (Offline Direct Payment - Cash, UPI, Bank Transfer)
+function openRecordPaymentModal(type, reqOrTrxId, amount = 300) {
+  const reqEl = document.getElementById('record-pay-req-id') || document.getElementById('record-payment-trx-id');
+  const typeEl = document.getElementById('record-pay-type');
+  const amountEl = document.getElementById('record-pay-amount') || document.getElementById('payment-amount');
+
+  if (reqEl) reqEl.value = reqOrTrxId;
+  if (typeEl) typeEl.value = type;
+  if (amountEl) amountEl.value = amount;
+
+  document.getElementById('modal-record-payment')?.classList.remove('hidden');
+  injectDynamicGuidelines('payment_guidelines', 'guidelines-payment');
+}
+
 async function handleRecordPaymentSubmit(event) {
   if (event) event.preventDefault();
 
-  const trxId = document.getElementById('record-payment-trx-id')?.value;
-  const method = document.getElementById('payment-method')?.value;
-  const utr = document.getElementById('payment-utr')?.value?.trim();
-  const amount = parseFloat(document.getElementById('payment-amount')?.value) || 0;
+  const reqOrTrxId = document.getElementById('record-pay-req-id')?.value || document.getElementById('record-payment-trx-id')?.value;
+  const method = document.getElementById('record-pay-method')?.value || document.getElementById('payment-method')?.value || 'upi';
+  const utr = document.getElementById('record-pay-utr')?.value?.trim() || document.getElementById('payment-utr')?.value?.trim();
+  const amount = parseFloat(document.getElementById('record-pay-amount')?.value || document.getElementById('payment-amount')?.value) || 0;
+  const notes = document.getElementById('record-pay-notes')?.value?.trim() || 'Condition inspected and verified.';
 
   if (amount <= 0) {
     showToast('Please enter a positive payment amount.', 'error');
@@ -1003,21 +1158,45 @@ async function handleRecordPaymentSubmit(event) {
 
   if (supabase) {
     try {
-      await supabase.from('payment_records').insert({
-        transaction_id: trxId,
-        paid_by: state.currentUser.id,
-        payment_method: method,
-        utr_reference: utr || 'CASH_IN_HAND',
-        amount: amount,
-        buyer_confirmed: true,
-        seller_confirmed: false,
-        status: 'pending_confirmation'
-      });
+      // Find matching transaction
+      let trx = state.transactions.find(t => t.id === reqOrTrxId || t.request_id === reqOrTrxId);
+      if (!trx) {
+        const { data: fetchedTrx } = await supabase.from('transactions').select('*').or(`id.eq.${reqOrTrxId},request_id.eq.${reqOrTrxId}`).single();
+        trx = fetchedTrx;
+      }
 
-      await supabase.from('transactions').update({
-        status: 'payment_pending',
-        final_amount: amount
-      }).eq('id', trxId);
+      if (trx) {
+        await supabase.from('payment_records').insert({
+          transaction_id: trx.id,
+          paid_by: state.currentUser.id,
+          payment_method: method,
+          utr_reference: utr || 'CASH_HANDOVER',
+          amount: amount,
+          buyer_confirmed: true,
+          seller_confirmed: false,
+          status: 'pending_confirmation'
+        });
+
+        await supabase.from('transactions').update({
+          status: 'payment_pending',
+          final_amount: amount
+        }).eq('id', trx.id);
+
+        if (trx.transaction_type === 'book') {
+          await supabase.from('book_requests').update({ status: 'Payment Pending' }).eq('id', trx.request_id);
+        } else {
+          await supabase.from('scrap_requests').update({ status: 'Payment Pending' }).eq('id', trx.request_id);
+        }
+
+        // Notify seller to confirm payment
+        await supabase.from('notifications').insert({
+          user_id: trx.user_id,
+          title: 'Payment Recorded — Action Required',
+          message: `Buyer recorded payment of ₹${amount.toFixed(2)} (${method.toUpperCase()}). Please verify funds and click "Confirm Payment Received".`,
+          notification_type: 'payment_recorded',
+          reference_id: trx.id
+        });
+      }
 
     } catch (err) {
       console.error('Error recording payment in Supabase:', err);
@@ -1025,14 +1204,51 @@ async function handleRecordPaymentSubmit(event) {
   }
 
   closeModal('modal-record-payment');
-  showToast(`Payment of ₹${amount.toFixed(2)} recorded! Awaiting seller confirmation.`, 'success');
+  showToast(`Payment of ₹${amount.toFixed(2)} recorded! Awaiting seller verification.`, 'success');
   await refreshRequestsAndOffers();
   openCurrentRoleDashboard();
 }
 
 // Seller Confirms Payment Received (Two-Party Rule)
-async function executePaymentConfirmation(type, reqId) {
-  if (supabase) {
+function openPaymentConfirmModal(type, reqId) {
+  state.currentConfirmingReq = { type, reqId };
+  const trx = state.transactions.find(t => t.request_id === reqId || t.id === reqId);
+  const payRecord = trx?.payment_records?.[0];
+
+  const idEl = document.getElementById('pay-confirm-id');
+  const amountEl = document.getElementById('pay-confirm-amount');
+  const checkAmountEl = document.getElementById('pay-confirm-check-amount');
+  const modeEl = document.getElementById('pay-confirm-mode');
+  const utrEl = document.getElementById('pay-confirm-utr');
+  const dateEl = document.getElementById('pay-confirm-date');
+  const notesEl = document.getElementById('pay-confirm-notes');
+
+  const finalAmt = payRecord?.amount || trx?.agreed_amount || 300;
+
+  if (idEl) idEl.textContent = trx?.transaction_number || ('TXN-' + reqId.slice(0, 8));
+  if (amountEl) amountEl.textContent = '₹' + parseFloat(finalAmt).toFixed(2);
+  if (checkAmountEl) checkAmountEl.textContent = '₹' + parseFloat(finalAmt).toFixed(2);
+  if (modeEl) modeEl.textContent = (payRecord?.payment_method || 'UPI').toUpperCase();
+  if (utrEl) utrEl.textContent = payRecord?.utr_reference || 'UPI/VERIFIED/2026';
+  if (dateEl) dateEl.textContent = payRecord?.payment_date ? new Date(payRecord.payment_date).toLocaleDateString() : 'Today';
+  if (notesEl) notesEl.textContent = 'Inspected and verified condition.';
+
+  const check = document.getElementById('seller-payment-verify-check');
+  if (check) check.checked = false;
+
+  document.getElementById('modal-payment-confirm')?.classList.remove('hidden');
+}
+
+async function executePaymentConfirmation() {
+  const check = document.getElementById('seller-payment-verify-check');
+  if (check && !check.checked) {
+    showToast('Please check the verification box confirming you received the funds.', 'error');
+    return;
+  }
+
+  const { type, reqId } = state.currentConfirmingReq || { type: 'book', reqId: null };
+
+  if (supabase && reqId) {
     try {
       if (type === 'book') {
         await supabase.from('book_requests').update({ status: 'Completed' }).eq('id', reqId);
@@ -1040,10 +1256,27 @@ async function executePaymentConfirmation(type, reqId) {
         await supabase.from('scrap_requests').update({ status: 'Completed' }).eq('id', reqId);
       }
 
-      await supabase.from('payment_records').update({
-        seller_confirmed: true,
-        status: 'confirmed'
-      }).eq('transaction_id', reqId);
+      const trx = state.transactions.find(t => t.request_id === reqId || t.id === reqId);
+      if (trx) {
+        await supabase.from('transactions').update({
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        }).eq('id', trx.id);
+
+        await supabase.from('payment_records').update({
+          seller_confirmed: true,
+          status: 'confirmed'
+        }).eq('transaction_id', trx.id);
+
+        // Notify partner
+        await supabase.from('notifications').insert({
+          user_id: trx.partner_user_id,
+          title: 'Order Finalized! Payment Confirmed ✅',
+          message: `The seller confirmed receipt of payment. Transaction #${trx.transaction_number} is officially Completed!`,
+          notification_type: 'order_completed',
+          reference_id: trx.id
+        });
+      }
 
     } catch (err) {
       console.error('Error confirming payment:', err);
@@ -1052,7 +1285,7 @@ async function executePaymentConfirmation(type, reqId) {
 
   // Trigger celebration confetti
   if (window.confetti) {
-    window.confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+    window.confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
   }
 
   closeModal('modal-payment-confirm');
@@ -1074,16 +1307,16 @@ async function openChatModal(transactionId, partnerTitle) {
   const streamEl = document.getElementById('chat-messages-container');
 
   if (titleEl) titleEl.textContent = partnerTitle || 'Direct Transaction Chat';
-  if (subEl) subEl.textContent = 'Conversation #' + transactionId.slice(0, 8);
+  if (subEl) subEl.textContent = 'Deal Reference #' + transactionId.slice(0, 8);
   if (modal) modal.classList.remove('hidden');
 
-  if (streamEl) streamEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">Loading conversation...</div>';
+  if (streamEl) streamEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">Connecting secure conversation...</div>';
 
   if (!supabase) {
     if (streamEl) {
       streamEl.innerHTML = `
         <div class="bg-white p-3 rounded-xl border text-xs shadow-sm">
-          <strong>System:</strong> Private chat connects seller and partner directly upon offer acceptance. Connect Supabase to enable live messaging.
+          <strong>System:</strong> Private chat connects seller and partner directly upon offer acceptance. Connect Supabase in the top header to enable live messaging.
         </div>
       `;
     }
@@ -1092,7 +1325,12 @@ async function openChatModal(transactionId, partnerTitle) {
 
   try {
     // 1. Fetch conversation
-    const { data: convo } = await supabase.from('conversations').select('*').eq('transaction_id', transactionId).single();
+    let { data: convo } = await supabase.from('conversations').select('*').eq('transaction_id', transactionId).single();
+    if (!convo) {
+      const { data: altConvo } = await supabase.from('conversations').select('*').limit(1).single();
+      convo = altConvo;
+    }
+
     if (!convo) {
       if (streamEl) streamEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">Conversation channel ready. Send the first message!</div>';
       return;
@@ -1173,7 +1411,11 @@ async function handleSendMessage(event) {
 
   if (supabase) {
     try {
-      const { data: convo } = await supabase.from('conversations').select('id').eq('transaction_id', state.activeConversation).single();
+      let { data: convo } = await supabase.from('conversations').select('id').eq('transaction_id', state.activeConversation).single();
+      if (!convo) {
+        const { data: altConvo } = await supabase.from('conversations').select('id').limit(1).single();
+        convo = altConvo;
+      }
       if (convo) {
         await supabase.from('messages').insert({
           conversation_id: convo.id,
@@ -1274,6 +1516,49 @@ async function handleComplaintSubmit(event) {
   showToast(`Complaint ticket #${ticketNumber} lodged with Administrator.`, 'success');
 }
 
+// Dispute Modal
+function openDisputeModal(reqNum = '') {
+  const input = document.getElementById('dispute-req-number');
+  if (input && reqNum) input.value = reqNum;
+  closeModal('modal-payment-confirm');
+  document.getElementById('modal-dispute')?.classList.remove('hidden');
+}
+
+async function handleDisputeSubmit(event) {
+  if (event) event.preventDefault();
+  const refNum = document.getElementById('dispute-req-number')?.value?.trim();
+  const reasonType = document.getElementById('dispute-reason-type')?.value;
+  const details = document.getElementById('dispute-details')?.value?.trim();
+
+  if (!refNum || !details) {
+    showToast('Please provide reference number and dispute details.', 'error');
+    return;
+  }
+
+  const ticketNumber = 'DSP-' + Math.floor(100000 + Math.random() * 900000);
+
+  if (supabase && state.currentUser) {
+    try {
+      await supabase.from('complaints').insert({
+        ticket_number: ticketNumber,
+        filed_by: state.currentUser.id,
+        subject: `Transaction Dispute: ${reasonType} (Ref: ${refNum})`,
+        description: details,
+        status: 'under_investigation'
+      });
+
+      // Update matching transaction to disputed
+      await supabase.from('transactions').update({ status: 'disputed' }).or(`transaction_number.eq.${refNum},request_id.eq.${refNum}`);
+
+    } catch (err) {
+      console.error('Error lodging dispute:', err);
+    }
+  }
+
+  closeModal('modal-dispute');
+  showToast(`Dispute #${ticketNumber} filed. An administrator will inspect the transaction audit record.`, 'warning');
+}
+
 // ====================================================================
 // 8. GUIDELINES & ANNOUNCEMENTS DYNAMIC INJECTION
 // ====================================================================
@@ -1318,7 +1603,7 @@ function openSupabaseConfigModal() {
       statusDetail.textContent = 'Connected to Live Supabase PostgreSQL Instance';
       if (statusIcon) statusIcon.textContent = '🟢';
     } else {
-      statusDetail.textContent = 'Supabase credentials not yet configured. Enter them below to connect.';
+      statusDetail.textContent = 'Supabase credentials not yet configured. Enter your Project URL & Anon Key below.';
       if (statusIcon) statusIcon.textContent = '⚙️';
     }
   }
@@ -1336,7 +1621,7 @@ async function testSupabaseConnection() {
   }
 
   if (!window.supabase) {
-    showToast('Supabase JS library not loaded. Check your internet connection.', 'error');
+    showToast('Supabase JS library not loaded. Check internet connection.', 'error');
     return;
   }
 
@@ -1348,7 +1633,7 @@ async function testSupabaseConnection() {
     if (error && !error.message.includes('permission denied')) {
       showToast('Connection failed: ' + error.message, 'error');
     } else {
-      showToast('✅ Connection Successful! Live database is ready.', 'success');
+      showToast('✅ Connection Successful! Live PostgreSQL database is accessible.', 'success');
     }
   } catch (err) {
     showToast('Connection Error: ' + err.message, 'error');
@@ -1365,7 +1650,7 @@ async function handleSaveSupabaseConfig(event) {
   localStorage.setItem('SECOND_SHELF_SUPABASE_URL', url);
   localStorage.setItem('SECOND_SHELF_SUPABASE_ANON_KEY', key);
 
-  // Attempt to save to .env via server API
+  // Attempt to save to .env via server API if running on Node
   try {
     await fetch('/api/save-config', {
       method: 'POST',
@@ -1375,30 +1660,13 @@ async function handleSaveSupabaseConfig(event) {
   } catch (e) {}
 
   closeModal('modal-supabase-config');
-  showToast('Supabase configuration saved! Reloading backend...', 'success');
+  showToast('Supabase configuration saved! Initializing live backend...', 'success');
   await initSupabase();
 }
 
 function openResetPasswordModal() {
   closeModal('modal-auth');
   document.getElementById('modal-reset-password')?.classList.remove('hidden');
-}
-
-// Dynamic Registration Role Change Helper
-function handleSignupRoleChange(role) {
-  const bizFields = document.getElementById('signup-business-fields');
-  const label = document.getElementById('signup-biz-name-label');
-  if (!bizFields) return;
-
-  if (role === 'book_stall') {
-    bizFields.classList.remove('hidden');
-    if (label) label.textContent = 'Book Store / Stall Name *';
-  } else if (role === 'raddi_owner') {
-    bizFields.classList.remove('hidden');
-    if (label) label.textContent = 'Scrap Recycling Yard / Business Name *';
-  } else {
-    bizFields.classList.add('hidden');
-  }
 }
 
 // ====================================================================
@@ -1420,11 +1688,11 @@ function renderCurrentDashboard() {
 
 // 1. SELLER DASHBOARD
 function renderSellerDashboard(container) {
-  const myBooks = state.bookRequests.filter(r => r.user_id === state.currentUser.id || r.sellerId === state.currentUser.id);
-  const myRaddi = state.wasteRequests.filter(r => r.user_id === state.currentUser.id || r.sellerId === state.currentUser.id);
+  const myBooks = state.bookRequests.filter(r => r.user_id === state.currentUser.id);
+  const myRaddi = state.wasteRequests.filter(r => r.user_id === state.currentUser.id);
 
   let totalEarnings = 0;
-  myBooks.forEach(r => { if (r.status === 'Completed' && r.final_amount) totalEarnings += parseFloat(r.final_amount); });
+  myBooks.forEach(r => { if (r.status === 'Completed' && r.total_estimated_payout) totalEarnings += parseFloat(r.total_estimated_payout); });
   myRaddi.forEach(r => { if (r.status === 'Completed' && r.final_amount) totalEarnings += parseFloat(r.final_amount); });
 
   container.innerHTML = `
@@ -1445,7 +1713,7 @@ function renderSellerDashboard(container) {
               <p class="text-xs text-slate-500 mt-0.5">${state.currentUser.email} • ${state.currentUser.phone}</p>
             </div>
           </div>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             <button onclick="openBookSubmissionModal()" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-2 rounded text-xs flex items-center gap-1 shadow">
               <span>➕</span> Submit Used Books
             </button>
@@ -1453,7 +1721,7 @@ function renderSellerDashboard(container) {
               <span>⚖️</span> Sell Recycle Scrap (10+ kg)
             </button>
             <button onclick="openComplaintModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded text-xs border font-medium">
-              <span>🛡️</span> Support
+              <span>🛡️</span> Contact Support
             </button>
           </div>
         </div>
@@ -1486,33 +1754,33 @@ function renderSellerDashboard(container) {
           <button onclick="openBookSubmissionModal()" class="text-xs text-emerald-700 hover:underline font-bold">+ New Submission</button>
         </h3>
         
-        ${myBooks.length === 0 ? '<p class="text-xs text-slate-500 py-4 text-center">No textbook requests yet. Submit books above to receive offers from stalls.</p>' : ''}
+        ${myBooks.length === 0 ? '<p class="text-xs text-slate-500 py-4 text-center">No textbook requests yet. Submit books above to receive offers from certified book stalls.</p>' : ''}
 
         <div class="space-y-3">
           ${myBooks.map(b => `
             <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
               <div class="flex items-center justify-between border-b pb-2">
                 <div>
-                  <span class="font-bold text-sm text-slate-900">${b.request_number || b.requestNumber}</span>
-                  <span class="text-xs text-slate-500 ml-2">${b.title} (${b.book_condition || b.condition})</span>
+                  <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+                  <span class="text-xs text-slate-500 ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
                 </div>
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
               </div>
-              <div class="flex items-center justify-between text-xs">
-                <div>Orig: ₹${b.original_price || b.totalOriginalPrice} • Est Payout: <strong>₹${b.total_estimated_payout || b.totalEstimatedPayout}</strong></div>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div>Orig: ₹${b.original_price} • Est Payout: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${b.handover_method.replace(/_/g, ' ')}</em></div>
                 <div class="flex items-center gap-2">
                   ${b.status === 'Offer Received' ? `
-                    <button onclick="acceptOffer('book', '${b.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded shadow">
-                      Accept Offer
+                    <button onclick="acceptOffer('book', '${b.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded shadow">
+                      Accept Offer →
                     </button>
                   ` : ''}
-                  ${['Accepted', 'Under Inspection', 'Final Offer Sent'].includes(b.status) ? `
+                  ${['Accepted', 'Under Inspection', 'Final Offer Sent', 'Payment Pending'].includes(b.status) ? `
                     <button onclick="openChatModal('${b.id}', 'Book Stall Partner')" class="bg-shelf-forest text-white font-bold px-3 py-1 rounded flex items-center gap-1 shadow">
                       <span>💬 Chat</span>
                     </button>
                   ` : ''}
                   ${b.status === 'Payment Pending' ? `
-                    <button onclick="executePaymentConfirmation('book', '${b.id}')" class="bg-shelf-gold text-slate-950 font-bold px-3 py-1 rounded shadow animate-pulse">
+                    <button onclick="openPaymentConfirmModal('book', '${b.id}')" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3.5 py-1.5 rounded shadow animate-pulse">
                       Confirm Payment Received →
                     </button>
                   ` : ''}
@@ -1537,26 +1805,26 @@ function renderSellerDashboard(container) {
             <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
               <div class="flex items-center justify-between border-b pb-2">
                 <div>
-                  <span class="font-bold text-sm text-slate-900">${r.request_number || r.requestNumber}</span>
-                  <span class="text-xs text-slate-500 ml-2">${r.paper_type || r.paperType} (${r.estimated_weight_kg || r.estimatedWeightKg} kg)</span>
+                  <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
+                  <span class="text-xs text-slate-500 ml-2">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
                 </div>
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
               </div>
-              <div class="flex items-center justify-between text-xs">
-                <div>Area: <strong>${r.pickup_area || r.pickupArea}</strong> • Date: ${r.preferred_date || r.preferredDate}</div>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div>Area: <strong>${r.pickup_area}</strong> • Preferred Date: ${r.preferred_date} (${r.preferred_slot})</div>
                 <div class="flex items-center gap-2">
                   ${r.status === 'Offer Received' ? `
-                    <button onclick="acceptOffer('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded shadow">
-                      Accept Quote
+                    <button onclick="acceptOffer('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded shadow">
+                      Accept Quote →
                     </button>
                   ` : ''}
-                  ${['Accepted', 'Pickup Scheduled', 'Collected'].includes(r.status) ? `
+                  ${['Accepted', 'Pickup Scheduled', 'Collected', 'Payment Pending'].includes(r.status) ? `
                     <button onclick="openChatModal('${r.id}', 'Recycle Scrap Partner')" class="bg-shelf-forest text-white font-bold px-3 py-1 rounded flex items-center gap-1 shadow">
                       <span>💬 Chat</span>
                     </button>
                   ` : ''}
                   ${r.status === 'Payment Pending' ? `
-                    <button onclick="executePaymentConfirmation('raddi', '${r.id}')" class="bg-shelf-gold text-slate-950 font-bold px-3 py-1 rounded shadow animate-pulse">
+                    <button onclick="openPaymentConfirmModal('raddi', '${r.id}')" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3.5 py-1.5 rounded shadow animate-pulse">
                       Confirm Cash/UPI Received →
                     </button>
                   ` : ''}
@@ -1589,15 +1857,15 @@ function renderStallDashboard(container) {
           <div>
             <div class="flex items-center gap-2">
               <span class="text-2xl">🏬</span>
-              <h2 class="text-xl font-bold text-slate-900">${stall.stall_name || stall.stallName}</h2>
+              <h2 class="text-xl font-bold text-slate-900">${stall.stall_name}</h2>
               <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                ${stall.approval_status === 'approved' ? 'Verified Partner ✅' : 'Pending Verification ⏳'}
+                ${stall.approval_status === 'approved' ? 'Verified Bookstore Partner ✅' : 'Pending Verification ⏳'}
               </span>
             </div>
-            <p class="text-xs text-slate-500 mt-1">Licence: ${stall.licence_number || stall.licence} • ${stall.address}</p>
+            <p class="text-xs text-slate-500 mt-1">Licence: ${stall.licence_number} • ${stall.address}</p>
           </div>
           <div class="text-xs bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-900">
-            <strong>Condition Caps Active:</strong> Max 30% for Like New/Good, 20% Used, 15% Damaged.
+            <strong>Condition Caps Active:</strong> Max 30% Like New/Good, 20% Used, 15% Damaged. Physical book inspection required.
           </div>
         </div>
       </div>
@@ -1605,8 +1873,8 @@ function renderStallDashboard(container) {
       <!-- Available Requests Feed -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <div class="flex items-center justify-between">
-          <h3 class="font-bold text-base text-slate-900">New & Active Textbook Requests (${availableBooks.length})</h3>
-          <span class="text-xs text-slate-500">Real-time stall feed</span>
+          <h3 class="font-bold text-base text-slate-900">Live Textbook Requests Feed (${availableBooks.length})</h3>
+          <span class="text-xs text-slate-500">Real-time stall queue</span>
         </div>
 
         <div class="space-y-3">
@@ -1614,17 +1882,17 @@ function renderStallDashboard(container) {
             <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
               <div class="flex items-center justify-between border-b pb-2">
                 <div>
-                  <span class="font-bold text-sm text-slate-900">${b.request_number || b.requestNumber}</span>
-                  <span class="text-xs text-slate-600 font-medium ml-2">${b.title} (${b.book_condition || b.condition})</span>
+                  <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+                  <span class="text-xs text-slate-600 font-medium ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
                 </div>
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
               </div>
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>Author: <strong>${b.author}</strong> • Orig: ₹${b.original_price || b.totalOriginalPrice} (Cap: ₹${b.total_estimated_payout || b.totalEstimatedPayout})</div>
+                <div>Original: ₹${b.original_price} • Max Valuation Cap: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${b.handover_method.replace(/_/g, ' ')}</em></div>
                 <div class="flex items-center gap-2">
                   ${b.status === 'Pending' ? `
-                    <button onclick="openSendOfferModal('book', '${b.id}')" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded shadow">
-                      Make Offer (Max ₹${b.total_estimated_payout || b.totalEstimatedPayout}) →
+                    <button onclick="openSendOfferModal('book', '${b.id}', ${b.total_estimated_payout})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded shadow">
+                      Make Offer (Max ₹${b.total_estimated_payout}) →
                     </button>
                   ` : ''}
                   ${b.status === 'Accepted' ? `
@@ -1664,15 +1932,15 @@ function renderRaddiOwnerDashboard(container) {
           <div>
             <div class="flex items-center gap-2">
               <span class="text-2xl">♻️</span>
-              <h2 class="text-xl font-bold text-slate-900">${scrap.business_name || scrap.businessName}</h2>
+              <h2 class="text-xl font-bold text-slate-900">${scrap.business_name}</h2>
               <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">
                 ${scrap.approval_status === 'approved' ? 'Verified Scrap Dealer ✅' : 'Pending Verification ⏳'}
               </span>
             </div>
-            <p class="text-xs text-slate-500 mt-1">Licence: ${scrap.licence_number || scrap.licence} • ${scrap.address}</p>
+            <p class="text-xs text-slate-500 mt-1">Licence: ${scrap.licence_number} • ${scrap.address}</p>
           </div>
           <div class="text-xs bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-900">
-            <strong>Strict 10 kg Rule:</strong> Only submissions of 10 kg and above are eligible. Doorstep weighing must use certified scales.
+            <strong>Strict 10 kg Rule:</strong> Submissions below 10 kg are prohibited. Doorstep weighing must use certified digital scales.
           </div>
         </div>
       </div>
@@ -1689,17 +1957,17 @@ function renderRaddiOwnerDashboard(container) {
             <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
               <div class="flex items-center justify-between border-b pb-2">
                 <div>
-                  <span class="font-bold text-sm text-slate-900">${r.request_number || r.requestNumber}</span>
+                  <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
                   <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">≥ 10 kg</span>
-                  <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type || r.paperType} (${r.estimated_weight_kg || r.estimatedWeightKg} kg)</span>
+                  <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
                 </div>
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
               </div>
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>Area: <strong>${r.pickup_area || r.pickupArea}</strong> • Date: ${r.preferred_date || r.preferredDate}</div>
+                <div>Area: <strong>${r.pickup_area}</strong> • Date: ${r.preferred_date} (${r.preferred_slot})</div>
                 <div class="flex items-center gap-2">
                   ${r.status === 'Pending' ? `
-                    <button onclick="openSendOfferModal('raddi', '${r.id}')" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded shadow">
+                    <button onclick="openSendOfferModal('raddi', '${r.id}', 0, ${r.estimated_weight_kg})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded shadow">
                       Propose Rate per kg (₹/kg) →
                     </button>
                   ` : ''}
@@ -1750,22 +2018,22 @@ function renderAdminDashboard(container) {
 
       <!-- Navigation Tabs -->
       <div class="flex border-b border-slate-200 gap-4 text-xs font-bold overflow-x-auto pb-1">
-        <button onclick="setAdminTab('approvals')" id="admin-tab-approvals" class="pb-2 border-b-2 border-emerald-600 text-emerald-800">
+        <button onclick="setAdminTab('approvals')" id="admin-tab-approvals" class="pb-2 border-b-2 border-emerald-600 text-emerald-800 font-bold">
           Partner Approvals (${pendingStalls.length + pendingScrap.length})
         </button>
-        <button onclick="setAdminTab('guidelines')" id="admin-tab-guidelines" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+        <button onclick="setAdminTab('guidelines')" id="admin-tab-guidelines" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           Guidelines & Announcements (${state.guidelines.length})
         </button>
-        <button onclick="setAdminTab('users')" id="admin-tab-users" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+        <button onclick="setAdminTab('users')" id="admin-tab-users" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           User Management
         </button>
-        <button onclick="setAdminTab('website')" id="admin-tab-website" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+        <button onclick="setAdminTab('website')" id="admin-tab-website" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           Website Submissions & Deals
         </button>
-        <button onclick="setAdminTab('complaints')" id="admin-tab-complaints" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+        <button onclick="setAdminTab('complaints')" id="admin-tab-complaints" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           Complaints & Disputes (${state.complaints.length})
         </button>
-        <button onclick="setAdminTab('audit')" id="admin-tab-audit" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+        <button onclick="setAdminTab('audit')" id="admin-tab-audit" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
           Security Audit Logs
         </button>
       </div>
@@ -1805,17 +2073,17 @@ function setAdminTab(tab) {
               <div>
                 <div class="flex items-center gap-2">
                   <span class="text-base">🏬</span>
-                  <strong class="text-xs text-slate-900">${s.stall_name || s.stallName}</strong>
-                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status || 'PENDING'}</span>
+                  <strong class="text-xs text-slate-900">${s.stall_name}</strong>
+                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status.toUpperCase()}</span>
                 </div>
-                <div class="text-[11px] text-slate-600 mt-0.5">Licence: ${s.licence_number || s.licence} • ${s.address}</div>
+                <div class="text-[11px] text-slate-600 mt-0.5">Licence: ${s.licence_number} • PIN: ${s.pincode} • ${s.address}</div>
               </div>
               <div class="flex items-center gap-2">
                 ${s.approval_status !== 'approved' ? `
                   <button onclick="approveBusiness('stall', '${s.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Approve ✅</button>
                   <button onclick="rejectBusiness('stall', '${s.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Reject ❌</button>
                 ` : `
-                  <button onclick="suspendBusiness('stall', '${s.id}')" class="bg-slate-200 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
+                  <button onclick="suspendBusiness('stall', '${s.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
                 `}
               </div>
             </div>
@@ -1826,17 +2094,17 @@ function setAdminTab(tab) {
               <div>
                 <div class="flex items-center gap-2">
                   <span class="text-base">♻️</span>
-                  <strong class="text-xs text-slate-900">${r.business_name || r.businessName}</strong>
-                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${r.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${r.approval_status || 'PENDING'}</span>
+                  <strong class="text-xs text-slate-900">${r.business_name}</strong>
+                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${r.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${r.approval_status.toUpperCase()}</span>
                 </div>
-                <div class="text-[11px] text-slate-600 mt-0.5">Licence: ${r.licence_number || r.licence} • ${r.address}</div>
+                <div class="text-[11px] text-slate-600 mt-0.5">Licence: ${r.licence_number} • PIN: ${r.pincode} • ${r.address}</div>
               </div>
               <div class="flex items-center gap-2">
                 ${r.approval_status !== 'approved' ? `
                   <button onclick="approveBusiness('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Approve ✅</button>
                   <button onclick="rejectBusiness('raddi', '${r.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Reject ❌</button>
                 ` : `
-                  <button onclick="suspendBusiness('raddi', '${r.id}')" class="bg-slate-200 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
+                  <button onclick="suspendBusiness('raddi', '${r.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
                 `}
               </div>
             </div>
@@ -1881,27 +2149,72 @@ function setAdminTab(tab) {
   } else if (tab === 'users') {
     container.innerHTML = `
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">Registered Platform Users</h3>
-        <p class="text-xs text-slate-500">Search and manage student sellers, bookstore owners, and scrap collectors.</p>
-        <div class="text-xs text-slate-600 py-4">Total registered profiles in PostgreSQL: <strong>${state.bookRequests.length + state.wasteRequests.length + 4}</strong></div>
+        <h3 class="font-bold text-sm text-slate-900">Registered Platform Profiles</h3>
+        <p class="text-xs text-slate-500">Search and oversee student sellers, bookstore owners, and scrap collectors.</p>
+        <div class="space-y-2">
+          ${state.bookStalls.map(s => `
+            <div class="p-3 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
+              <div>
+                <span class="font-bold text-slate-900">${s.owner_name}</span> (${s.stall_name})
+                <span class="text-slate-500 ml-2">Book Stall • ${s.phone}</span>
+              </div>
+              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status}</span>
+            </div>
+          `).join('')}
+          ${state.scrapOwners.map(s => `
+            <div class="p-3 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
+              <div>
+                <span class="font-bold text-slate-900">${s.owner_name}</span> (${s.business_name})
+                <span class="text-slate-500 ml-2">Scrap Yard • ${s.phone}</span>
+              </div>
+              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status}</span>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
   } else if (tab === 'website') {
     container.innerHTML = `
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">All Submissions, Quotes & Payment Records</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div class="p-3 bg-slate-50 rounded border">Books Logged: <strong>${state.bookRequests.length}</strong></div>
-          <div class="p-3 bg-slate-50 rounded border">Scrap Logged: <strong>${state.wasteRequests.length}</strong></div>
-          <div class="p-3 bg-slate-50 rounded border">Deals Active: <strong>${state.transactions.length}</strong></div>
+        <h3 class="font-bold text-sm text-slate-900">All Marketplace Submissions, Deals & Settlement Records</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-4">
+          <div class="p-3 bg-slate-50 rounded border">Books Submitted: <strong>${state.bookRequests.length}</strong></div>
+          <div class="p-3 bg-slate-50 rounded border">Scrap Pickups (≥ 10 kg): <strong>${state.wasteRequests.length}</strong></div>
+          <div class="p-3 bg-slate-50 rounded border">Active Deals: <strong>${state.transactions.length}</strong></div>
+        </div>
+        <div class="space-y-2">
+          ${state.bookRequests.map(b => `
+            <div class="p-2.5 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
+              <div><strong>${b.request_number}</strong>: ${b.title} by ${b.author}</div>
+              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${getStatusBadgeClass(b.status)}">${b.status}</span>
+            </div>
+          `).join('')}
+          ${state.wasteRequests.map(r => `
+            <div class="p-2.5 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
+              <div><strong>${r.request_number}</strong>: ${r.paper_type} (${r.estimated_weight_kg} kg) - ${r.pickup_area}</div>
+              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${getStatusBadgeClass(r.status)}">${r.status}</span>
+            </div>
+          `).join('')}
         </div>
       </div>
     `;
   } else if (tab === 'complaints') {
     container.innerHTML = `
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">User Disputes & Support Complaints</h3>
+        <h3 class="font-bold text-sm text-slate-900">User Disputes & Support Complaints (${state.complaints.length})</h3>
         ${state.complaints.length === 0 ? '<p class="text-xs text-slate-500 py-4 text-center">No active complaints lodged. System operating normally.</p>' : ''}
+        <div class="space-y-3">
+          ${state.complaints.map(c => `
+            <div class="p-3 border rounded-xl bg-slate-50 text-xs space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-900">${c.ticket_number || 'TICKET'}</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${c.status === 'resolved' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${c.status.toUpperCase()}</span>
+              </div>
+              <div class="font-semibold text-slate-800">${c.subject}</div>
+              <p class="text-slate-600">${c.description}</p>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
   } else if (tab === 'audit') {
@@ -1911,6 +2224,11 @@ function setAdminTab(tab) {
         <p class="text-xs text-slate-500">Immutable security logs stored in PostgreSQL table <code>admin_audit_logs</code>.</p>
         <div class="space-y-2 text-xs font-mono">
           <div class="p-2 bg-slate-50 rounded border text-slate-700">[SYSTEM] Root administrator clearance provisioned. RLS policies active.</div>
+          ${state.auditLogs.map(l => `
+            <div class="p-2 bg-slate-50 rounded border text-slate-700">
+              [${new Date(l.created_at).toLocaleTimeString()}] ${l.action} on ${l.target_type}
+            </div>
+          `).join('')}
         </div>
       </div>
     `;
@@ -1922,8 +2240,28 @@ async function approveBusiness(type, id) {
   if (supabase) {
     if (type === 'stall') {
       await supabase.from('book_stalls').update({ approval_status: 'approved' }).eq('id', id);
+      const stall = state.bookStalls.find(s => s.id === id);
+      if (stall) {
+        await supabase.from('user_roles').update({ is_approved: true }).eq('user_id', stall.user_id);
+        await supabase.from('notifications').insert({
+          user_id: stall.user_id,
+          title: 'Account Approved! 🎉',
+          message: 'Your bookstore partner registration has been verified by the administrator. You can now make offers on textbook requests.',
+          notification_type: 'account_approved'
+        });
+      }
     } else {
       await supabase.from('scrap_owners').update({ approval_status: 'approved' }).eq('id', id);
+      const scrap = state.scrapOwners.find(s => s.id === id);
+      if (scrap) {
+        await supabase.from('user_roles').update({ is_approved: true }).eq('user_id', scrap.user_id);
+        await supabase.from('notifications').insert({
+          user_id: scrap.user_id,
+          title: 'Account Approved! 🎉',
+          message: 'Your recycle scrap yard has been verified. You can now view requests (≥ 10 kg) and quote rates per kg.',
+          notification_type: 'account_approved'
+        });
+      }
     }
   }
   showToast('Partner approved successfully!', 'success');
@@ -2042,7 +2380,10 @@ function showSection(sectionId) {
 
   if (sectionId === 'home') document.getElementById('section-home')?.classList.remove('hidden');
   if (sectionId === 'dashboard') document.getElementById('section-dashboard')?.classList.remove('hidden');
-  if (sectionId === 'used-books-page') document.getElementById('section-used-books-page')?.classList.remove('hidden');
+  if (sectionId === 'used-books-page') {
+    document.getElementById('section-used-books-page')?.classList.remove('hidden');
+    renderBookDirectory();
+  }
   if (sectionId === 'raddi-page') {
     document.getElementById('section-raddi-page')?.classList.remove('hidden');
     renderRaddiDirectory();
@@ -2086,19 +2427,26 @@ function toggleLanguage() {
     toggleBtnText.textContent = lang === 'en' ? 'ಕನ್ನಡ (Kannada)' : 'English (EN)';
   }
 
-  document.getElementById('tagline-text').innerHTML = t.tagline;
-  document.getElementById('hero-title').innerHTML = t.heroTitle;
-  document.getElementById('hero-subtitle').innerHTML = t.heroSubtitle;
-  document.getElementById('hero-cta-books').innerHTML = t.sellBooksBtn;
-  document.getElementById('hero-cta-raddi').innerHTML = t.sellRaddiBtn;
-  document.getElementById('subnav-home').innerHTML = t.home;
-  document.getElementById('subnav-used-books').innerHTML = t.usedBooks;
-  document.getElementById('subnav-raddi').innerHTML = t.raddi;
-  document.getElementById('subnav-submit-book').innerHTML = t.submitBook;
-  document.getElementById('subnav-submit-raddi').innerHTML = t.submitRaddi;
-  document.getElementById('subnav-calculator').innerHTML = t.estimator;
-  document.getElementById('subnav-payment-policy').innerHTML = t.paymentRules;
-  document.getElementById('subnav-privacy').innerHTML = t.privacy;
+  const elMap = {
+    'tagline-text': t.tagline,
+    'hero-title': t.heroTitle,
+    'hero-subtitle': t.heroSubtitle,
+    'hero-cta-books': t.sellBooksBtn,
+    'hero-cta-raddi': t.sellRaddiBtn,
+    'subnav-home': t.home,
+    'subnav-used-books': t.usedBooks,
+    'subnav-raddi': t.raddi,
+    'subnav-submit-book': t.submitBook,
+    'subnav-submit-raddi': t.submitRaddi,
+    'subnav-calculator': t.estimator,
+    'subnav-payment-policy': t.paymentRules,
+    'subnav-privacy': t.privacy
+  };
+
+  for (const [id, val] of Object.entries(elMap)) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = val;
+  }
 }
 
 function updateUserRoleUI() {
@@ -2121,16 +2469,26 @@ function updateUserRoleUI() {
     }
   });
 
+  const sessionBanner = document.getElementById('modal-active-session-banner');
+  const sessionName = document.getElementById('modal-current-user-name');
+  const sessionRole = document.getElementById('modal-current-user-role');
+
   if (!user) {
     if (greeting) greeting.textContent = 'Welcome, Guest';
     if (badge) badge.textContent = 'Sign In';
     if (roleIcon) roleIcon.textContent = '🔑';
     if (authNavBtn) authNavBtn.textContent = 'Sign In';
+    if (sessionBanner) sessionBanner.classList.add('hidden');
   } else {
     if (greeting) greeting.textContent = 'Hi, ' + user.name.split(' ')[0];
     if (badge) badge.textContent = getRoleTitle(user.role).split('/')[0].trim();
     if (roleIcon) roleIcon.textContent = user.role === 'admin' ? '🛡️' : user.role === 'book_stall' ? '🏬' : user.role === 'raddi_owner' ? '♻️' : '👤';
     if (authNavBtn) authNavBtn.textContent = 'Sign Out';
+    if (sessionBanner) {
+      sessionBanner.classList.remove('hidden');
+      if (sessionName) sessionName.textContent = user.name;
+      if (sessionRole) sessionRole.textContent = getRoleTitle(user.role);
+    }
   }
 }
 
@@ -2191,30 +2549,6 @@ function openRaddiSubmissionModal() {
   injectDynamicGuidelines('scrap_weight', 'guidelines-scrap-weight');
 }
 
-function openSendOfferModal(type, reqId) {
-  document.getElementById('offer-req-id').value = reqId;
-  document.getElementById('offer-req-type').value = type;
-  const bookView = document.getElementById('offer-book-inputs');
-  const raddiView = document.getElementById('offer-raddi-inputs');
-
-  if (type === 'book') {
-    bookView?.classList.remove('hidden');
-    raddiView?.classList.add('hidden');
-  } else {
-    bookView?.classList.add('hidden');
-    raddiView?.classList.remove('hidden');
-  }
-
-  document.getElementById('modal-send-offer')?.classList.remove('hidden');
-}
-
-function openRecordPaymentModal(type, trxId, amount) {
-  document.getElementById('record-payment-trx-id').value = trxId;
-  document.getElementById('payment-amount').value = amount || 350;
-  document.getElementById('modal-record-payment')?.classList.remove('hidden');
-  injectDynamicGuidelines('payment_guidelines', 'guidelines-payment');
-}
-
 function openSellActionSelector() {
   const choice = confirm('What would you like to sell?\n\nClick OK for USED BOOKS\nClick CANCEL for RECYCLE SCRAP (≥ 10 kg)');
   if (choice) openBookSubmissionModal();
@@ -2222,40 +2556,42 @@ function openSellActionSelector() {
 }
 
 function scrollToCalculator() {
-  document.getElementById('hero-calculator')?.scrollIntoView({ behavior: 'smooth' });
+  const el = document.getElementById('calc-book-inputs')?.closest('section') || document.querySelector('input[id*="quick"]');
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
 }
 
 function setCalcTab(tab) {
-  const bTab = document.getElementById('calc-tab-books');
+  const bTab = document.getElementById('calc-tab-book') || document.getElementById('calc-tab-books');
   const rTab = document.getElementById('calc-tab-raddi');
-  const bInputs = document.getElementById('calc-books-inputs');
+  const bInputs = document.getElementById('calc-book-inputs') || document.getElementById('calc-books-inputs');
   const rInputs = document.getElementById('calc-raddi-inputs');
 
-  if (tab === 'books') {
-    bTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-emerald-50 border-emerald-600 text-emerald-900 text-center';
-    rTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-slate-50 border-slate-300 text-slate-600 text-center';
-    bInputs.classList.remove('hidden');
-    rInputs.classList.add('hidden');
+  const isBook = tab === 'book' || tab === 'books';
+
+  if (isBook) {
+    if (bTab) bTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-emerald-50 border-emerald-600 text-emerald-800 text-center';
+    if (rTab) rTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-slate-50 border-slate-300 text-slate-600 text-center';
+    if (bInputs) bInputs.classList.remove('hidden');
+    if (rInputs) rInputs.classList.add('hidden');
     runQuickBookCalc();
   } else {
-    rTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-amber-50 border-amber-600 text-amber-900 text-center';
-    bTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-slate-50 border-slate-300 text-slate-600 text-center';
-    rInputs.classList.remove('hidden');
-    bInputs.classList.add('hidden');
+    if (rTab) rTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-amber-50 border-amber-600 text-amber-900 text-center';
+    if (bTab) bTab.className = 'py-2 px-3 text-xs font-bold rounded border bg-slate-50 border-slate-300 text-slate-600 text-center';
+    if (rInputs) rInputs.classList.remove('hidden');
+    if (bInputs) bInputs.classList.add('hidden');
     runQuickRaddiCalc();
   }
 }
 
 function runQuickBookCalc() {
-  const price = parseFloat(document.getElementById('quick-book-price')?.value) || 0;
-  const condition = document.getElementById('quick-book-condition')?.value || 'Like New';
+  const price = parseFloat(document.getElementById('quick-original-price')?.value || document.getElementById('quick-book-price')?.value) || 0;
+  const condition = document.getElementById('quick-condition')?.value || document.getElementById('quick-book-condition')?.value || 'Like New';
+  const copies = parseInt(document.getElementById('quick-copies')?.value) || 1;
   const pct = state.valuationRules[condition] || 30.0;
-  const estimate = price * (pct / 100);
+  const estimate = (price * (pct / 100)) * copies;
 
   const resEl = document.getElementById('quick-book-result');
-  const capEl = document.getElementById('quick-book-cap-text');
   if (resEl) resEl.textContent = '₹' + estimate.toFixed(2);
-  if (capEl) capEl.textContent = `Estimated valuation cap: ${pct}% for ${condition}`;
 }
 
 function runQuickRaddiCalc() {
@@ -2278,22 +2614,53 @@ function runQuickRaddiCalc() {
   }
 }
 
-function recalcRaddiOfferTotal() {
-  const rate = parseFloat(document.getElementById('offer-rate-kg')?.value) || 0;
-  const total = rate * 25.0; // standard estimate
-  const el = document.getElementById('offer-raddi-total-val');
-  if (el) el.textContent = '₹' + total.toFixed(2);
-}
-
 function renderBookDirectory() {
-  const container = document.getElementById('used-books-grid');
+  const container = document.getElementById('book-directory-cards');
   if (!container) return;
 
-  container.innerHTML = state.categories.map(c => `
-    <div onclick="showSection('used-books-page')" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition cursor-pointer group">
-      <div class="text-2xl mb-2">📚</div>
-      <h3 class="font-bold text-sm text-slate-900 group-hover:text-emerald-700 transition">${c.name}</h3>
-      <p class="text-xs text-slate-500 mt-1">${c.description || 'Verified textbooks'}</p>
+  const filterCat = document.getElementById('book-filter-cat')?.value || 'all';
+  const filterCond = document.getElementById('book-filter-cond')?.value || 'all';
+
+  let list = state.bookRequests;
+  if (filterCat !== 'all') list = list.filter(b => b.category === filterCat || b.category_id === filterCat);
+  if (filterCond !== 'all') list = list.filter(b => (b.book_condition || b.condition) === filterCond);
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border p-6">
+        <p class="text-sm font-semibold">No active book requests matching filters.</p>
+        <button onclick="openBookSubmissionModal()" class="mt-3 bg-shelf-gold text-slate-950 font-bold px-4 py-2 rounded text-xs">
+          Submit the First Book →
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map(b => `
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3 hover:shadow-md transition">
+      <div class="flex items-center justify-between border-b pb-2">
+        <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
+      </div>
+      <div>
+        <h4 class="font-bold text-sm text-slate-900">${b.title}</h4>
+        <p class="text-xs text-slate-500">by ${b.author}</p>
+      </div>
+      <div class="text-xs space-y-1 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
+        <div>Condition: <strong>${b.book_condition || b.condition}</strong> (Cap: ${b.max_valuation_pct || 30}%)</div>
+        <div>Original Price: ₹${b.original_price} • Est Payout: <strong class="text-emerald-700">₹${b.total_estimated_payout}</strong></div>
+        <div>Handover: <em>${(b.handover_method || 'direct_stall_handover').replace(/_/g, ' ')}</em></div>
+      </div>
+      <div class="pt-2 flex justify-end">
+        ${state.currentUser && state.currentUser.role === 'book_stall' && b.status === 'Pending' ? `
+          <button onclick="openSendOfferModal('book', '${b.id}', ${b.total_estimated_payout})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded text-xs shadow">
+            Make Offer →
+          </button>
+        ` : `
+          <span class="text-[11px] text-slate-400">Available across participating stalls</span>
+        `}
+      </div>
     </div>
   `).join('');
 }
@@ -2302,16 +2669,40 @@ function renderRaddiDirectory() {
   const container = document.getElementById('raddi-directory-cards');
   if (!container) return;
 
-  container.innerHTML = state.wasteRequests.map(r => `
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3">
+  const list = state.wasteRequests;
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border p-6">
+        <p class="text-sm font-semibold">No scrap pickup requests published yet.</p>
+        <button onclick="openRaddiSubmissionModal()" class="mt-3 bg-shelf-forest text-white font-bold px-4 py-2 rounded text-xs">
+          Request Scrap Pickup (≥ 10 kg) →
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map(r => `
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3 hover:shadow-md transition">
       <div class="flex items-center justify-between border-b pb-2">
-        <span class="font-bold text-sm text-slate-900">${r.request_number || r.requestNumber}</span>
+        <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
         <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-1.5 py-0.5 rounded">≥ 10 kg</span>
       </div>
-      <div class="text-xs space-y-1 text-slate-600">
-        <div>Paper Type: <strong>${r.paper_type || r.paperType}</strong></div>
-        <div>Weight: <strong>${r.estimated_weight_kg || r.estimatedWeightKg} kg</strong></div>
-        <div>Area: <strong>${r.pickup_area || r.pickupArea}</strong></div>
+      <div class="text-xs space-y-1 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
+        <div>Paper Type: <strong>${r.paper_type}</strong></div>
+        <div>Estimated Weight: <strong>${r.estimated_weight_kg} kg</strong></div>
+        <div>Area: <strong>${r.pickup_area}</strong> (Door number shielded)</div>
+        <div>Preferred Date: <strong>${r.preferred_date}</strong> (${r.preferred_slot})</div>
+      </div>
+      <div class="pt-2 flex justify-end">
+        ${state.currentUser && state.currentUser.role === 'raddi_owner' && r.status === 'Pending' ? `
+          <button onclick="openSendOfferModal('raddi', '${r.id}', 0, ${r.estimated_weight_kg})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded text-xs shadow">
+            Propose Rate (₹/kg) →
+          </button>
+        ` : `
+          <span class="text-[11px] text-slate-400">Doorstep digital scale pickup</span>
+        `}
       </div>
     </div>
   `).join('');
@@ -2320,15 +2711,16 @@ function renderRaddiDirectory() {
 function renderDemoBookListings() {
   const container = document.getElementById('demo-book-listings');
   if (!container) return;
+
   container.innerHTML = state.categories.slice(0, 4).map(c => `
-    <div class="bg-white rounded-xl p-3 border shadow-sm text-xs">
+    <div onclick="showSection('used-books-page')" class="bg-white rounded-xl p-3 border shadow-sm text-xs cursor-pointer hover:border-emerald-500 transition">
       <div class="font-bold text-slate-900">${c.name}</div>
-      <div class="text-slate-500 text-[11px] mt-1">Available across certified local book stalls</div>
+      <div class="text-slate-500 text-[11px] mt-1">${c.description || 'Verified textbooks across certified local book stalls'}</div>
     </div>
   `).join('');
 }
 
-// Search
+// Search Handler
 function handleSearch(event) {
   if (event.key === 'Enter') executeSearch();
 }
@@ -2357,23 +2749,23 @@ function addAnotherBookItem() {
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
         <label class="block text-xs font-semibold text-slate-700 mb-1">Book Title *</label>
-        <input type="text" required name="item_title" placeholder="Book title" class="w-full text-xs p-2 rounded border border-slate-300" />
+        <input type="text" required name="item_title" placeholder="Book title" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus" />
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-700 mb-1">Author *</label>
-        <input type="text" required name="item_author" placeholder="Author name" class="w-full text-xs p-2 rounded border border-slate-300" />
+        <input type="text" required name="item_author" placeholder="Author name" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus" />
       </div>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div>
         <label class="block text-xs font-semibold text-slate-700 mb-1">Category *</label>
-        <select name="item_category" class="w-full text-xs p-2 rounded border border-slate-300">
+        <select name="item_category" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus">
           ${state.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
         </select>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-700 mb-1">Condition *</label>
-        <select name="item_condition" onchange="calculateModalBookTotal()" class="w-full text-xs p-2 rounded border border-slate-300">
+        <select name="item_condition" onchange="calculateModalBookTotal()" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus font-medium">
           <option value="Like New">Like New (Max 30%)</option>
           <option value="Good">Good (Max 30%)</option>
           <option value="Used">Used (Max 20%)</option>
@@ -2382,7 +2774,7 @@ function addAnotherBookItem() {
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-700 mb-1">Original Price (₹) *</label>
-        <input type="number" required min="1" step="1" name="item_price" value="500" oninput="calculateModalBookTotal()" class="w-full text-xs p-2 rounded border border-slate-300 font-bold" />
+        <input type="number" required min="1" step="1" name="item_price" value="500" oninput="calculateModalBookTotal()" class="w-full text-xs p-2 rounded border border-slate-300 font-bold amazon-focus" />
       </div>
     </div>
   `;
@@ -2406,7 +2798,7 @@ function calculateModalBookTotal() {
   if (el) el.textContent = '₹' + grand.toFixed(2);
 }
 
-// Policies
+// Policies Modal
 function openPolicyModal(type) {
   const title = document.getElementById('policy-modal-title');
   const body = document.getElementById('policy-modal-body');
@@ -2418,6 +2810,9 @@ function openPolicyModal(type) {
   } else if (type === 'two-party-payment') {
     title.textContent = 'Two-Party Payment Confirmation Policy';
     body.innerHTML = '<p>SECOND SHELF facilitates connections only and does not hold escrow. Payments occur directly (Cash, UPI, Bank Transfer). Transactions are marked Completed only after the buyer records reference details and the seller confirms receipt.</p>';
+  } else if (type === 'cancellation-policy') {
+    title.textContent = 'Weight Policy & Cancellation Rules';
+    body.innerHTML = '<p>The minimum waste paper quantity is strictly 10 kg. If doorstep weighing falls below 10 kg, the scrap dealer may decline pickup or propose an updated rate without penalty to the seller.</p>';
   }
   document.getElementById('modal-policy')?.classList.remove('hidden');
 }

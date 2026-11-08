@@ -1605,21 +1605,19 @@
           <form id="form-login-seller" onsubmit="handleSellerLogin(event)" class="space-y-3">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">Seller / Student Email Address *</label>
-              <input type="email" required id="seller-email" value="priya.sharma@gmail.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <input type="email" required id="seller-email" placeholder="e.g. your.email@example.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-semibold text-slate-700">Password *</label>
                 <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-emerald-700 hover:underline">Forgot Password?</button>
               </div>
-              <input type="password" required id="seller-password" value="Password@123" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <input type="password" required id="seller-password" placeholder="Enter your password" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
 
             <button type="submit" class="w-full bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold py-2.5 rounded-lg text-xs shadow transition flex items-center justify-center gap-1.5">
               <span>Sign In as Seller / User</span> →
             </button>
-
-            
           </form>
 
           <div class="text-center pt-2 border-t text-xs text-slate-600">
@@ -1643,21 +1641,19 @@
           <form id="form-login-stall" onsubmit="handleStallLogin(event)" class="space-y-3">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">Book Stall Email / Shop ID *</label>
-              <input type="email" required id="stall-email" value="vidyarthi.books@avenue.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <input type="email" required id="stall-email" placeholder="e.g. vidyarthi.books@avenue.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-semibold text-slate-700">Password *</label>
                 <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-blue-700 hover:underline">Forgot?</button>
               </div>
-              <input type="password" required id="stall-password" value="Password@123" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <input type="password" required id="stall-password" placeholder="Enter bookstore password" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
 
             <button type="submit" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-bold py-2.5 rounded-lg text-xs shadow transition flex items-center justify-center gap-1.5">
               <span>Sign In to Stall Console</span> →
             </button>
-
-            
           </form>
 
           <div class="text-center pt-2 border-t text-xs text-slate-600">
@@ -1681,21 +1677,19 @@
           <form id="form-login-raddi" onsubmit="handleRaddiLogin(event)" class="space-y-3">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">Scrap Dealer Business Email / Yard ID *</label>
-              <input type="email" required id="raddi-email" value="anand@ecorecyclers.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <input type="email" required id="raddi-email" placeholder="e.g. eco.recyclers@karnataka.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-semibold text-slate-700">Password *</label>
                 <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-amber-800 hover:underline">Forgot?</button>
               </div>
-              <input type="password" required id="raddi-password" value="Password@123" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <input type="password" required id="raddi-password" placeholder="Enter scrap dealer password" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
             </div>
 
             <button type="submit" class="w-full bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold py-2.5 rounded-lg text-xs shadow transition flex items-center justify-center gap-1.5">
               <span>Sign In to Scrap Dealer Console</span> →
             </button>
-
-            
           </form>
 
           <div class="text-center pt-2 border-t text-xs text-slate-600">
@@ -1728,15 +1722,19 @@
           <form id="form-login-creator" onsubmit="handleCreatorAdminLogin(event)" class="space-y-3">
             <div>
               <label class="block text-xs font-bold text-slate-800 mb-1">Admin Login ID *</label>
-              <input type="text" required id="creator-email" value="admin" placeholder="admin or admin@secondshelf.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono font-bold" />
+              <input type="text" required id="creator-email" placeholder="admin or admin@secondshelf.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono font-bold" />
             </div>
 
             <div>
               <label class="block text-xs font-bold text-slate-800 mb-1">Admin Password *</label>
-              <input type="password" required id="creator-password" value="Admin@2026" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
+              <input type="password" required id="creator-password" placeholder="Enter secure admin password" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
             </div>
 
-            
+            <button type="submit" class="w-full bg-rose-700 hover:bg-rose-800 text-white font-bold py-2.5 rounded-lg text-xs shadow transition flex items-center justify-center gap-1.5">
+              <span>🛡️ Sign In as Administrator</span> →
+            </button>
+          </form>
+        </div>
 
         <!-- 5. REGISTRATION VIEW (No Admin Option!) -->
         <div id="view-portal-signup" class="space-y-4 hidden">
@@ -1766,13 +1764,38 @@
 
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">Account Role *</label>
-              <select id="signup-role" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium">
+              <select id="signup-role" onchange="handleSignupRoleChange(this.value)" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium">
                 <option value="seller">👤 Seller / General User (Instant Access)</option>
                 <option value="book_stall">🏬 Book Stall Owner (Requires Admin Approval)</option>
                 <option value="raddi_owner">♻️ Recycle Scrap Owner (Requires Admin Approval)</option>
               </select>
               <div class="bg-amber-50 border border-amber-200 p-2 rounded text-[10px] text-amber-900 mt-1 font-semibold">
                 🔒 Security Note: Admin accounts CANNOT be self-registered. Admin privileges are restricted exclusively to the Web Creator.
+              </div>
+            </div>
+
+            <!-- Dynamic Business Registration Fields (Book Stalls & Scrap Yards) -->
+            <div id="signup-business-fields" class="space-y-3 hidden border-t border-slate-200 pt-3">
+              <div class="bg-blue-50 border border-blue-200 p-2.5 rounded text-xs text-blue-900 font-medium">
+                🏢 <strong>Business Registration:</strong> Provide your store or scrap yard credentials for admin verification.
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1" id="signup-biz-name-label">Business / Shop Name *</label>
+                <input type="text" id="signup-biz-name" placeholder="e.g. Sapna Book House / Karnataka Eco Recyclers" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Trade / Pollution Licence No. *</label>
+                  <input type="text" id="signup-biz-licence" placeholder="e.g. BLR/TRD/2024/1049" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Shop / Yard Area PIN *</label>
+                  <input type="text" id="signup-biz-pin" maxlength="6" pattern="[0-9]{6}" placeholder="e.g. 560001" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Store / Warehouse Address *</label>
+                <input type="text" id="signup-biz-address" placeholder="Physical shop / depot address" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" />
               </div>
             </div>
 
