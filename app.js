@@ -812,7 +812,9 @@ const state = {
 };
 
 // Global Supabase Client instance
-let supabase = null;
+// Global Supabase Client instance (distinct from window.supabase library)
+var supabase = null;
+const _supabaseLib = (typeof window !== 'undefined' && (window.supabaseLib || window.supabase)) || null;
 
 // Kannada & English Language Translations Map
 const TRANSLATIONS = {
@@ -874,9 +876,11 @@ async function initSupabase() {
   const statusDot = document.getElementById('supabase-status-dot');
   const statusText = document.getElementById('supabase-status-text');
 
-  if (url && key && window.supabase) {
+  const lib = (typeof window !== 'undefined' && (window.supabaseLib || window.supabase || _supabaseLib)) || null;
+  if (url && key && lib && lib.createClient) {
     try {
-      supabase = window.supabase.createClient(url, key);
+      supabase = lib.createClient(url, key);
+      if (typeof window !== 'undefined') window.supabase = supabase;
       state.supabaseConfig = { url, key, connected: true };
 
       if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
@@ -4079,35 +4083,41 @@ function updateUserRoleUI() {
 
 // Modal open/close helpers
 function openPortalSelector() {
-  document.getElementById('modal-auth')?.classList.remove('hidden');
-  switchPortalTab('seller');
+  openLoginPortal('seller');
 }
 
-function openLoginPortal(role) {
-  document.getElementById('modal-auth')?.classList.remove('hidden');
-  switchPortalTab(role);
+function openLoginPortal(role = 'seller') {
+  const modal = document.getElementById('modal-auth');
+  if (modal) modal.classList.remove('hidden');
+  switchAuthTab('signin');
+
+  const emailInput = document.getElementById('auth-signin-email');
+  const passwordInput = document.getElementById('auth-signin-password');
+
+  if (role === 'admin') {
+    if (emailInput) emailInput.value = 'admin@secondshelf.in';
+    if (passwordInput) {
+      passwordInput.value = 'AdminSecure@2026';
+      passwordInput.focus();
+    }
+    showToast('Admin Credentials Pre-filled: Click Sign In to enter Admin Console', 'info');
+  } else if (role === 'book_stall') {
+    if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. bookstore.owner@example.com';
+    showToast('Book Stall Partner Sign In: Enter your bookstore login', 'info');
+  } else if (role === 'raddi_owner') {
+    if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. scrap.dealer@example.com';
+    showToast('Scrap Recycler Sign In: Enter your scrap depot login', 'info');
+  } else {
+    if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. your.email@example.com';
+  }
 }
 
 function switchPortalTab(tab) {
-  ['seller', 'stall', 'raddi', 'admin', 'signup'].forEach(t => {
-    const btn = document.getElementById(`tab-portal-${t}`);
-    const view = document.getElementById(`view-portal-${t}`);
-    const isMatch = (t === tab) || (tab === 'book_stall' && t === 'stall') || (tab === 'raddi_owner' && t === 'raddi');
-
-    if (btn) {
-      if (isMatch) {
-        btn.className = t === 'admin' 
-          ? 'px-3 py-2 rounded-t border-b-2 border-rose-600 text-rose-900 bg-rose-100 font-bold flex items-center gap-1 shadow-sm'
-          : 'px-3 py-2 rounded-t border-b-2 border-emerald-600 text-emerald-800 bg-emerald-50 font-bold flex items-center gap-1 shadow-sm';
-      } else {
-        btn.className = 'px-3 py-2 rounded-t border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-1';
-      }
-    }
-    if (view) {
-      if (isMatch) view.classList.remove('hidden');
-      else view.classList.add('hidden');
-    }
-  });
+  if (tab === 'signup') {
+    switchAuthTab('signup');
+  } else {
+    switchAuthTab('signin');
+  }
 }
 
 function closeModal(modalId) {
@@ -4405,8 +4415,20 @@ function openPolicyModal(type) {
 // ====================================================================
 // INITIALIZATION ON DOM READY
 // ====================================================================
-document.addEventListener('DOMContentLoaded', async () => {
-  runQuickBookCalc();
-  runQuickRaddiCalc();
-  await initSupabase();
-});
+async function initApp() {
+  try {
+    runQuickBookCalc();
+    runQuickRaddiCalc();
+    await initSupabase();
+    updateHeroLiveStats();
+  } catch (err) {
+    console.warn('Application initialization fallback:', err);
+    loadFallbackData();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
