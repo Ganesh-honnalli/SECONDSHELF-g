@@ -548,9 +548,37 @@ async function handleSignupSubmit(event) {
   const name = document.getElementById('signup-name')?.value?.trim();
   const email = document.getElementById('signup-email')?.value?.trim();
   const password = document.getElementById('signup-password')?.value;
+  const confirmPassword = document.getElementById('signup-confirm-password')?.value;
   const phone = document.getElementById('signup-phone')?.value?.trim();
   const role = document.getElementById('signup-role')?.value || 'seller';
   const ageCheck = document.getElementById('signup-age-confirm')?.checked || document.getElementById('signup-age-check')?.checked;
+
+  if (!name || name.length < 2) {
+    showToast('Please enter your full name.', 'error');
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
+    showToast('Please enter a valid email address.', 'error');
+    return;
+  }
+
+  const cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : '';
+  if (!cleanPhone || cleanPhone.length < 10) {
+    showToast('Please enter a valid 10-digit mobile number.', 'error');
+    return;
+  }
+
+  if (!password || password.length < 8) {
+    showToast('Password must be at least 8 characters long.', 'error');
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    showToast('Passwords do not match. Please verify your password.', 'error');
+    return;
+  }
 
   if (!ageCheck) {
     showToast('Age Confirmation Required: You must be 18 years or older to register under DPDP compliance.', 'error');
@@ -582,7 +610,7 @@ async function handleSignupSubmit(event) {
     return;
   }
 
-  const userId = data.user.id;
+  const userId = data?.user?.id;
 
   // Additional Business Fields if registering Book Stall or Scrap Yard
   if (role === 'book_stall') {

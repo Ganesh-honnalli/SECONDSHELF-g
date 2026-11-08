@@ -1,5 +1,5 @@
-Role Portal	Full Name / Business	Email ID	Password	Special Clearance / Key
-1. User / Seller	"Priya Sharma (Student, RVCE)"	priya.sharma@gmail.com	Password@123	None (Standard Seller)
-2. Book Stall Owner	Rajesh Gowda (Vidyarthi Book House)	vidyarthi.books@avenue.in	Password@123	Stall Licence: BLR/STALL/2024/9918
-3. Recycle Scrap Owner	Anand Rao (Karnataka Eco Recyclers)	anand@ecorecyclers.in	Password@123	Scrap Licence: KSPCB/WPR/2023/8821
-4. Web Creator Only Admin	Website Creator & Super Admin	admin@secondshelf.in	CreatorAdmin@2026	Master Passkey: CREATOR#SECONDSHELF#2026
+Portal Name,Target Audience,Access Requirement,Credentials Flow
+1. User / Seller Portal,Students & Book Sellers,Real email verification + 18+ age confirmation,Self-register with Email/Password -> Verify Email Link -> Login
+2. Book Stall Owner Portal,Licensed Used Bookstore Partners,Real email verification + Admin review of trade licence,Self-register with Shop Licence -> Verify Email -> Admin Approves in Admin Console -> Login
+3. Recycle Scrap Owner Portal,Certified Paper Recycling Dealers,Real email verification + Admin review of pollution/trade licence,Self-register with Yard Licence -> Verify Email -> Admin Approves in Admin Console -> Login
+4. Web Creator Only Admin,Single Platform Administrator,Server-side PostgreSQL provisioning via provision_admin.sql,Provisioned via Supabase SQL Editor -> Master Admin Console
