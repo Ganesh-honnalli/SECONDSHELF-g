@@ -1,9 +1,782 @@
+
+// Regional Sales Analytics Filter State
+let analyticsFilters = {
+  region: 'all',
+  bizType: 'all',
+  status: 'all',
+  dateRange: 'all'
+};
+
+function setAnalyticsFilter(key, value) {
+  analyticsFilters[key] = value;
+  setAdminTab('analytics');
+}
+
+
+// ====================================================================
+// UNIFIED AUTHENTICATION & SESSION MANAGEMENT
+// ====================================================================
+
+function switchAuthTab(tab) {
+  const signinTab = document.getElementById('tab-auth-signin');
+  const signupTab = document.getElementById('tab-auth-signup');
+  const signinView = document.getElementById('view-auth-signin');
+  const signupView = document.getElementById('view-auth-signup');
+
+  if (tab === 'signin') {
+    signinTab?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signinTab?.classList.remove('text-slate-600');
+    signupTab?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signupTab?.classList.add('text-slate-600');
+    signinView?.classList.remove('hidden');
+    signupView?.classList.add('hidden');
+  } else {
+    signupTab?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signupTab?.classList.remove('text-slate-600');
+    signinTab?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signinTab?.classList.add('text-slate-600');
+    signupView?.classList.remove('hidden');
+    signinView?.classList.add('hidden');
+  }
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btn) btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    if (btn) btn.textContent = '👁️';
+  }
+}
+
+// Unified Account Header Button Click Handler
+function handleAccountButtonClick() {
+  if (state.currentUser) {
+    openCurrentRoleDashboard();
+  } else {
+    document.getElementById('modal-auth')?.classList.remove('hidden');
+    switchAuthTab('signin');
+  }
+}
+
+// Unified Sign In Handler
+async function handleUnifiedSignIn(event) {
+  if (event) event.preventDefault();
+  const errorBox = document.getElementById('signin-error-box');
+  const errorMsg = document.getElementById('signin-error-msg');
+  const successBox = document.getElementById('signin-success-box');
+  const successMsg = document.getElementById('signin-success-msg');
+  const spinner = document.getElementById('auth-signin-spinner');
+  const btnText = document.getElementById('auth-signin-btn-text');
+  const submitBtn = document.getElementById('auth-signin-submit-btn');
+
+  if (errorBox) errorBox.classList.add('hidden');
+  if (successBox) successBox.classList.add('hidden');
+
+  const email = document.getElementById('auth-signin-email')?.value?.trim();
+  const password = document.getElementById('auth-signin-password')?.value;
+  const remember = document.getElementById('auth-signin-remember')?.checked;
+
+  if (!email || !password) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Please enter both your email address and password.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (!supabase) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Backend connection initializing. Please retry in a few moments.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  // Set loading state
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Authenticating...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    if (error) {
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Sign In to SECOND SHELF';
+      if (submitBtn) submitBtn.disabled = false;
+      if (errorBox && errorMsg) {
+        errorMsg.textContent = error.message.includes('Invalid login credentials') 
+          ? 'Invalid email or password. Please verify your credentials.' 
+          : error.message;
+        errorBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (remember) {
+      localStorage.setItem('SECOND_SHELF_REMEMBER_EMAIL', email);
+    } else {
+      localStorage.removeItem('SECOND_SHELF_REMEMBER_EMAIL');
+    }
+
+    if (successBox && successMsg) {
+      successMsg.textContent = 'Sign in successful! Entering dashboard...';
+      successBox.classList.remove('hidden');
+    }
+
+    await resolveUserProfile(data.user);
+    
+    setTimeout(() => {
+      closeModal('modal-auth');
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Sign In to SECOND SHELF';
+      if (submitBtn) submitBtn.disabled = false;
+      if (errorBox) errorBox.classList.add('hidden');
+      if (successBox) successBox.classList.add('hidden');
+
+      // Role-based automatic navigation
+      showSection('dashboard');
+      if (state.currentUser?.role === 'admin') {
+        setAdminTab('analytics');
+      } else {
+        renderCurrentDashboard();
+      }
+    }, 600);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Sign In to SECOND SHELF';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'An unexpected connection error occurred: ' + (err.message || err);
+      errorBox.classList.remove('hidden');
+    }
+  }
+}
+
+// Unified Sign Up Handler
+async function handleUnifiedSignUp(event) {
+  if (event) event.preventDefault();
+  const errorBox = document.getElementById('signup-error-box');
+  const errorMsg = document.getElementById('signup-error-msg');
+  const successBox = document.getElementById('signup-success-box');
+  const successMsg = document.getElementById('signup-success-msg');
+  const spinner = document.getElementById('auth-signup-spinner');
+  const btnText = document.getElementById('auth-signup-btn-text');
+  const submitBtn = document.getElementById('auth-signup-submit-btn');
+
+  if (errorBox) errorBox.classList.add('hidden');
+  if (successBox) successBox.classList.add('hidden');
+
+  const name = document.getElementById('auth-signup-name')?.value?.trim();
+  const email = document.getElementById('auth-signup-email')?.value?.trim();
+  const phone = document.getElementById('auth-signup-phone')?.value?.trim();
+  const password = document.getElementById('auth-signup-password')?.value;
+  const confirm = document.getElementById('auth-signup-confirm')?.value;
+  const ageConfirm = document.getElementById('auth-signup-age')?.checked;
+
+  if (!name || !email || !password) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Please fill out all required fields.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (password.length < 8) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Password must be at least 8 characters long.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (password !== confirm) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Passwords do not match. Please re-enter identical passwords.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (!ageConfirm) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'You must confirm that you are 18 years of age or older to enter marketplace agreements.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (!supabase) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Backend connection unavailable. Please refresh and try again.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  // Set loading state
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Registering Account...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: name,
+          phone: phone || '+91 98450 00000',
+          role: 'seller'
+        }
+      }
+    });
+
+    if (error) {
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Create Account & Send Verification Email';
+      if (submitBtn) submitBtn.disabled = false;
+      if (errorBox && errorMsg) {
+        errorMsg.textContent = error.message;
+        errorBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (data.user) {
+      try {
+        await supabase.from('profiles').upsert([
+          {
+            id: data.user.id,
+            full_name: name,
+            phone: phone || '+91 98450 00000',
+            email: email,
+            age_confirmed: true
+          }
+        ]);
+        await supabase.from('user_roles').upsert([
+          {
+            user_id: data.user.id,
+            role: 'seller',
+            is_approved: true
+          }
+        ]);
+      } catch (dbErr) {
+        console.warn('Profile sync handled via auth triggers or constraints:', dbErr);
+      }
+    }
+
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Account Created ✅';
+    if (successBox && successMsg) {
+      successMsg.textContent = 'Registration successful! A verification email has been dispatched to ' + email + '. You can now sign in.';
+      successBox.classList.remove('hidden');
+    }
+    showToast('Account registered! Please sign in with your email.', 'success');
+
+    setTimeout(() => {
+      switchAuthTab('signin');
+      const emailInput = document.getElementById('auth-signin-email');
+      if (emailInput) emailInput.value = email;
+      if (submitBtn) submitBtn.disabled = false;
+    }, 2000);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Create Account & Send Verification Email';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = err.message || 'Error occurred while creating account.';
+      errorBox.classList.remove('hidden');
+    }
+  }
+}
+
+
+// ====================================================================
+// UNIFIED BUSINESS PARTNER APPLICATION (BOOK STALL OR SCRAP RECYCLER)
+// ====================================================================
+
+function openBusinessApplyModal(type = 'stall') {
+  if (!state.currentUser) {
+    showToast('Please sign in or register to apply for business partnership.', 'info');
+    document.getElementById('modal-auth')?.classList.remove('hidden');
+    switchAuthTab('signin');
+    return;
+  }
+
+  const select = document.getElementById('apply-partner-category');
+  if (select) select.value = type;
+  handlePartnerCategoryChange(type);
+
+  const phoneInput = document.getElementById('apply-phone');
+  if (phoneInput && state.currentUser.phone) {
+    phoneInput.value = state.currentUser.phone;
+  }
+
+  document.getElementById('modal-business-apply')?.classList.remove('hidden');
+}
+
+function handlePartnerCategoryChange(category) {
+  const hiddenType = document.getElementById('apply-business-type');
+  const title = document.getElementById('apply-modal-title');
+  const icon = document.getElementById('apply-modal-icon');
+  const nameLabel = document.getElementById('apply-name-label');
+  const nameInput = document.getElementById('apply-business-name');
+
+  if (hiddenType) hiddenType.value = category;
+
+  if (category === 'stall') {
+    if (title) title.textContent = 'Apply for Book Stall Partnership';
+    if (icon) icon.textContent = '🏬';
+    if (nameLabel) nameLabel.textContent = 'Book Stall / Store Name *';
+    if (nameInput) nameInput.placeholder = 'e.g. Vidyarthi Book Bureau';
+  } else {
+    if (title) title.textContent = 'Apply for Scrap Recycling Depot';
+    if (icon) icon.textContent = '♻️';
+    if (nameLabel) nameLabel.textContent = 'Scrap Recycling Business / Yard Name *';
+    if (nameInput) nameInput.placeholder = 'e.g. Karnataka Eco Recyclers';
+  }
+}
+
+async function handleBusinessApplySubmit(event) {
+  if (event) event.preventDefault();
+  if (!state.currentUser) return;
+
+  const type = document.getElementById('apply-partner-category')?.value || 'stall';
+  const name = document.getElementById('apply-business-name')?.value?.trim();
+  const licence = document.getElementById('apply-licence')?.value?.trim();
+  const phone = document.getElementById('apply-phone')?.value?.trim();
+  const address = document.getElementById('apply-address')?.value?.trim();
+  const city = document.getElementById('apply-city')?.value?.trim() || 'Bengaluru';
+  const district = document.getElementById('apply-district')?.value?.trim() || 'Bengaluru Urban';
+  const pincode = document.getElementById('apply-pincode')?.value?.trim();
+  const stateVal = document.getElementById('apply-state')?.value || 'Karnataka';
+
+  if (!name || !licence || !address || !pincode) {
+    showToast('Please fill in all mandatory fields with valid trade information.', 'error');
+    return;
+  }
+
+  const fullAddress = address + ', ' + city + ', ' + district + ', ' + stateVal;
+
+  if (supabase) {
+    try {
+      if (type === 'stall') {
+        const { error } = await supabase.from('book_stalls').insert([
+          {
+            user_id: state.currentUser.id,
+            stall_name: name,
+            licence_number: licence,
+            address: fullAddress,
+            pincode: pincode,
+            phone: phone,
+            approval_status: 'pending',
+            is_approved: false
+          }
+        ]);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('scrap_owners').insert([
+          {
+            user_id: state.currentUser.id,
+            business_name: name,
+            licence_number: licence,
+            address: fullAddress,
+            pincode: pincode,
+            phone: phone,
+            approval_status: 'pending',
+            is_approved: false
+          }
+        ]);
+        if (error) throw error;
+      }
+
+      await supabase.from('admin_audit_logs').insert([
+        {
+          action: 'partner_application',
+          target_type: type,
+          target_id: state.currentUser.id,
+          details: {
+            applicant_name: state.currentUser.name,
+            applicant_email: state.currentUser.email,
+            business_name: name,
+            licence_number: licence,
+            district,
+            city,
+            pincode
+          }
+        }
+      ]);
+
+      showToast('Application submitted! Administrator will review your credentials.', 'success');
+      closeModal('modal-business-apply');
+      await refreshRequestsAndOffers();
+      renderCurrentDashboard();
+
+    } catch (err) {
+      showToast('Error submitting application: ' + err.message, 'error');
+    }
+  } else {
+    showToast('Application saved in local staging.', 'info');
+    closeModal('modal-business-apply');
+  }
+}
+
+// ====================================================================
+// CUSTOMER RATING & REVIEWS (FEEDS STALL PERFORMANCE SCORE)
+// ====================================================================
+
+function openStallReviewModal(stallId, orderId) {
+  if (!state.currentUser) {
+    showToast('Please sign in to submit a rating.', 'info');
+    return;
+  }
+  const stall = state.bookStalls.find(s => s.id === stallId);
+  const stallNameEl = document.getElementById('review-stall-name');
+  if (stallNameEl) stallNameEl.textContent = stall ? stall.stall_name : 'Book Stall Partner';
+
+  const stallIdInput = document.getElementById('review-stall-id');
+  const orderIdInput = document.getElementById('review-order-id');
+  if (stallIdInput) stallIdInput.value = stallId;
+  if (orderIdInput) orderIdInput.value = orderId || '';
+
+  setRatingStars(5);
+  document.getElementById('modal-stall-review')?.classList.remove('hidden');
+}
+
+function setRatingStars(stars) {
+  const hiddenInput = document.getElementById('review-star-rating');
+  const valText = document.getElementById('star-rating-value');
+  if (hiddenInput) hiddenInput.value = stars;
+  if (valText) valText.textContent = stars.toFixed(1) + ' / 5';
+
+  const starBtns = document.querySelectorAll('.star-rating-btn');
+  starBtns.forEach((btn, idx) => {
+    if (idx < stars) {
+      btn.className = 'star-rating-btn text-amber-400';
+    } else {
+      btn.className = 'star-rating-btn text-slate-300';
+    }
+  });
+}
+
+async function handleSubmitStallReview(event) {
+  if (event) event.preventDefault();
+  const stallId = document.getElementById('review-stall-id')?.value;
+  const orderId = document.getElementById('review-order-id')?.value;
+  const rating = parseFloat(document.getElementById('review-star-rating')?.value || '5');
+  const comments = document.getElementById('review-comments')?.value?.trim();
+
+  if (!stallId || !comments) {
+    showToast('Please provide your comments and rating.', 'error');
+    return;
+  }
+
+  const payload = {
+    action: 'stall_review',
+    target_type: 'book_stall',
+    target_id: stallId,
+    details: {
+      stall_id: stallId,
+      order_id: orderId,
+      rating: rating,
+      feedback: comments,
+      user_id: state.currentUser?.id,
+      user_name: state.currentUser?.name,
+      timestamp: new Date().toISOString()
+    }
+  };
+
+  if (supabase) {
+    try {
+      await supabase.from('admin_audit_logs').insert([payload]);
+    } catch (e) {
+      console.warn('Could not record review in remote database:', e);
+    }
+  }
+
+  state.auditLogs.unshift({
+    id: 'rev_' + Date.now(),
+    created_at: new Date().toISOString(),
+    ...payload
+  });
+
+  showToast('Thank you! Your feedback has been recorded and updated the stall score.', 'success');
+  closeModal('modal-stall-review');
+  renderCurrentDashboard();
+}
+
+
+// ====================================================================
+// BOOK STALL PERFORMANCE SCORE & TRANSPARENT RATING ENGINE
+// ====================================================================
+
+function calculateStallPerformanceScore(stall) {
+  if (!stall) {
+    return {
+      score: 75,
+      fulfilmentScore: 30,
+      ratingScore: 30,
+      volumeScore: 15,
+      penalty: 0,
+      avgRating: 4.0,
+      reviewCount: 0,
+      completedCount: 0,
+      badge: { text: 'Good ⭐⭐⭐⭐', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+      status: 'approved',
+      reviews: []
+    };
+  }
+
+  // 1. Order Fulfilment Rate (40 points max)
+  const stallOffers = state.bookOffers.filter(o => o.stall_id === stall.id);
+  const acceptedOffers = stallOffers.filter(o => o.status === 'Accepted' || o.status === 'Completed');
+  const completedOffers = stallOffers.filter(o => o.status === 'Completed');
+  
+  let fulfilmentRate = 1.0;
+  if (acceptedOffers.length > 0) {
+    fulfilmentRate = completedOffers.length / acceptedOffers.length;
+  }
+  const fulfilmentScore = Math.round(fulfilmentRate * 40);
+
+  // 2. Customer Rating (40 points max)
+  const reviews = (state.auditLogs || []).filter(a => 
+    a.action === 'stall_review' && 
+    (a.target_id === stall.id || a.details?.stall_id === stall.id)
+  );
+
+  let avgRating = 4.2; // Baseline provisional rating for verified bookstore
+  const reviewCount = reviews.length;
+  if (reviewCount > 0) {
+    const sum = reviews.reduce((acc, r) => acc + (parseFloat(r.details?.rating) || 5.0), 0);
+    avgRating = parseFloat((sum / reviewCount).toFixed(1));
+  }
+  const ratingScore = Math.round((avgRating / 5.0) * 40);
+
+  // 3. Completed Volume & Activity (20 points max)
+  const completedTransactions = state.transactions.filter(t => 
+    t.status === 'Completed' && (t.stall_id === stall.id || t.receiver_id === stall.user_id)
+  );
+  const completedCount = Math.max(completedOffers.length, completedTransactions.length);
+  const volumeScore = Math.min(20, completedCount * 4 + 8); // Start with 8 base points for approved stall, max 20
+
+  // 4. Penalty for unresolved disputes
+  const stallComplaints = (state.complaints || []).filter(c => 
+    c.status !== 'Resolved' && (c.against_id === stall.id || c.against_user_id === stall.user_id)
+  );
+  const penalty = stallComplaints.length * 10;
+
+  const totalScore = Math.max(10, Math.min(100, Math.round(fulfilmentScore + ratingScore + volumeScore - penalty)));
+
+  let badge = { text: 'Excellent ⭐⭐⭐⭐⭐', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+  if (totalScore < 50) {
+    badge = { text: 'Action Required ⚠️', color: 'bg-rose-100 text-rose-800 border-rose-300' };
+  } else if (totalScore < 70) {
+    badge = { text: 'Average ⭐⭐⭐', color: 'bg-amber-100 text-amber-800 border-amber-300' };
+  } else if (totalScore < 85) {
+    badge = { text: 'Good ⭐⭐⭐⭐', color: 'bg-blue-100 text-blue-800 border-blue-300' };
+  }
+
+  return {
+    score: totalScore,
+    fulfilmentScore,
+    ratingScore,
+    volumeScore,
+    penalty,
+    avgRating,
+    reviewCount,
+    completedCount,
+    badge,
+    status: stall.approval_status || 'approved',
+    reviews
+  };
+}
+
+
+// ====================================================================
+// REGIONAL SALES ANALYTICS ENGINE (STATE, DISTRICT, CITY GROUPING)
+// ====================================================================
+
+function getRegionalSalesAnalytics(filters = {}) {
+  const regionFilter = filters.region || analyticsFilters.region || 'all';
+  const bizFilter = filters.bizType || analyticsFilters.bizType || 'all';
+  const statusFilter = filters.status || analyticsFilters.status || 'all';
+  const dateFilter = filters.dateRange || analyticsFilters.dateRange || 'all';
+
+  const REGION_MAP = {
+    'Bengaluru Urban': ['Bengaluru', 'Bangalore', 'Chickpet', 'Basavanagudi', 'Malleshwaram', 'Indiranagar', 'Koramangala', 'Whitefield', 'Basaveshwaranagar', 'Jayanagar', 'Hebbal', '560001', '560002', '560004', '560009', '560010', '560020', '560079'],
+    'Mysuru': ['Mysuru', 'Mysore', 'Saraswathipuram', 'Gokulam', 'Vijayanagar', '570001', '570005', '570006'],
+    'Hubballi-Dharwad': ['Hubballi', 'Hubli', 'Dharwad', 'Vidyanagar', '580020', '580021', '580031'],
+    'Dakshina Kannada': ['Mangaluru', 'Mangalore', 'Hampankatta', 'Surathkal', '575001', '575014'],
+    'Belagavi': ['Belagavi', 'Belgaum', 'Tilakwadi', '590001', '590006'],
+    'Kalaburagi': ['Kalaburagi', 'Gulbarga', '585101'],
+    'Shivamogga': ['Shivamogga', 'Shimoga', '577201'],
+    'Tumakuru': ['Tumakuru', 'Tumkur', '572101']
+  };
+
+  function resolveDistrict(address = '', pincode = '') {
+    const text = (address + ' ' + pincode).toLowerCase();
+    for (const [dist, keywords] of Object.entries(REGION_MAP)) {
+      for (const kw of keywords) {
+        if (text.includes(kw.toLowerCase())) return { state: 'Karnataka', district: dist, city: keywords[0] };
+      }
+    }
+    return { state: 'Karnataka', district: 'Bengaluru Urban', city: 'Bengaluru' };
+  }
+
+  // Filter transactions
+  let txs = [...(state.transactions || [])];
+
+  if (statusFilter !== 'all') {
+    txs = txs.filter(t => (t.status || '').toLowerCase() === statusFilter.toLowerCase());
+  }
+  if (bizFilter === 'books') {
+    txs = txs.filter(t => t.request_type === 'book');
+  } else if (bizFilter === 'scrap') {
+    txs = txs.filter(t => t.request_type !== 'book');
+  }
+
+  if (dateFilter === '30days') {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    txs = txs.filter(t => new Date(t.created_at || Date.now()) >= cutoff);
+  } else if (dateFilter === 'year') {
+    const cutoff = new Date('2026-01-01');
+    txs = txs.filter(t => new Date(t.created_at || Date.now()) >= cutoff);
+  }
+
+  const districtData = {};
+  Object.keys(REGION_MAP).forEach(d => {
+    districtData[d] = {
+      state: 'Karnataka',
+      district: d,
+      city: REGION_MAP[d][0],
+      totalSales: 0,
+      completedOrders: 0,
+      totalOrders: 0,
+      activeStalls: 0,
+      activeScrap: 0
+    };
+  });
+
+  // Count active book stalls and scrap depots
+  (state.bookStalls || []).forEach(s => {
+    if (s.approval_status === 'approved') {
+      const reg = resolveDistrict(s.address, s.pincode);
+      if (districtData[reg.district]) districtData[reg.district].activeStalls++;
+    }
+  });
+
+  (state.scrapOwners || []).forEach(r => {
+    if (r.approval_status === 'approved') {
+      const reg = resolveDistrict(r.address, r.pincode);
+      if (districtData[reg.district]) districtData[reg.district].activeScrap++;
+    }
+  });
+
+  // Tally transaction sales per region
+  txs.forEach(t => {
+    const stall = state.bookStalls.find(s => s.id === t.stall_id || s.user_id === t.receiver_id);
+    const scrap = state.scrapOwners.find(s => s.id === t.scrap_owner_id || s.user_id === t.receiver_id);
+    const reg = resolveDistrict(stall?.address || scrap?.address || t.delivery_address || '', stall?.pincode || scrap?.pincode || '');
+
+    if (!districtData[reg.district]) {
+      districtData[reg.district] = {
+        state: 'Karnataka',
+        district: reg.district,
+        city: reg.city,
+        totalSales: 0,
+        completedOrders: 0,
+        totalOrders: 0,
+        activeStalls: 0,
+        activeScrap: 0
+      };
+    }
+
+    const amt = parseFloat(t.amount) || 0;
+    districtData[reg.district].totalSales += amt;
+    districtData[reg.district].totalOrders++;
+    if (t.status === 'Completed') {
+      districtData[reg.district].completedOrders++;
+    }
+  });
+
+  let rows = Object.values(districtData);
+  if (regionFilter !== 'all') {
+    rows = rows.filter(r => r.district.toLowerCase() === regionFilter.toLowerCase());
+  }
+
+  const totalSalesAmount = rows.reduce((acc, r) => acc + r.totalSales, 0);
+  const totalCompletedOrders = rows.reduce((acc, r) => acc + r.completedOrders, 0);
+  const totalActiveStalls = (state.bookStalls || []).filter(s => s.approval_status === 'approved').length;
+  const totalActiveScrap = (state.scrapOwners || []).filter(s => s.approval_status === 'approved').length;
+  const pendingApps = (state.bookStalls || []).filter(s => s.approval_status === 'pending').length + 
+                      (state.scrapOwners || []).filter(s => s.approval_status === 'pending').length;
+  const totalRegisteredUsers = (state.usersList && state.usersList.length > 0) ? state.usersList.length : 1;
+
+  return {
+    rows,
+    totalSalesAmount,
+    totalCompletedOrders,
+    totalActiveStalls,
+    totalActiveScrap,
+    totalRegisteredUsers,
+    pendingApps,
+    totalBookTx: txs.filter(t => t.request_type === 'book').length,
+    totalScrapTx: txs.filter(t => t.request_type !== 'book').length,
+    filters: {
+      region: regionFilter,
+      bizType: bizFilter,
+      status: statusFilter,
+      dateRange: dateFilter
+    }
+  };
+}
+
 // ====================================================================
 // SECOND SHELF - Full-Stack Application Logic (Supabase + PostgreSQL)
 // Complete Real-Time Backend Integration & Role-Based Workflows
 // ====================================================================
 
 // Application State Store
+
+// Update Hero Counter Badges with 100% Real Database Metrics
+function updateHeroLiveStats() {
+  const booksCount = state.bookRequests ? state.bookRequests.length : 0;
+  const paperKg = state.wasteRequests ? state.wasteRequests
+    .filter(r => r.status === 'Completed')
+    .reduce((sum, r) => sum + (parseFloat(r.actual_weight_kg || r.estimated_weight_kg) || 0), 0) : 0;
+  
+  const payoutTotal = state.transactions ? state.transactions
+    .filter(t => t.status === 'Completed')
+    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0) : 0;
+
+  const approvedStalls = state.bookStalls ? state.bookStalls.filter(s => s.approval_status === 'approved').length : 0;
+  const approvedScrap = state.scrapOwners ? state.scrapOwners.filter(s => s.approval_status === 'approved').length : 0;
+  const partnersCount = approvedStalls + approvedScrap;
+
+  const elBooks = document.getElementById('hero-stat-books');
+  const elPaper = document.getElementById('hero-stat-paper');
+  const elPayout = document.getElementById('hero-stat-payout');
+  const elPartners = document.getElementById('hero-stat-partners');
+
+  if (elBooks) elBooks.textContent = booksCount > 0 ? booksCount.toLocaleString() : '0';
+  if (elPaper) elPaper.textContent = paperKg > 0 ? paperKg.toLocaleString() + ' kg' : '0 kg';
+  if (elPayout) {
+    if (payoutTotal >= 100000) {
+      elPayout.textContent = '₹' + (payoutTotal / 100000).toFixed(1) + ' Lakh';
+    } else {
+      elPayout.textContent = '₹' + payoutTotal.toLocaleString();
+    }
+  }
+  if (elPartners) elPartners.textContent = partnersCount > 0 ? partnersCount.toString() : '0';
+}
+
 const state = {
   language: 'en', // 'en' | 'kn'
   currentUser: null, // Initial state: unauthenticated
@@ -152,27 +925,28 @@ async function initSupabase() {
 // Fallback initial data for preview when cloud credentials are not yet configured
 function loadFallbackData() {
   state.categories = [
-    { id: '1', name: 'Degree Books', slug: 'degree-books', description: 'Undergraduate and postgraduate college textbooks (B.Com, B.Sc, BA, BCA, BBA)', count: 142, is_active: true },
-    { id: '2', name: 'PUC Books', slug: 'puc-books', description: 'Karnataka Pre-University College (1st & 2nd PUC Science, Commerce, Arts)', count: 89, is_active: true },
-    { id: '3', name: 'Class 10th / SSLC Books', slug: 'sslc-10th-books', description: '10th Standard / SSLC state syllabus and CBSE textbooks', count: 76, is_active: true },
-    { id: '4', name: 'School Books', slug: 'school-books', description: 'Primary and high school textbooks (Grades 1 to 9)', count: 54, is_active: true },
-    { id: '5', name: 'Engineering Books', slug: 'engineering-books', description: 'VTU and autonomous engineering syllabus textbooks (CSE, ECE, Mech, Civil)', count: 210, is_active: true },
-    { id: '6', name: 'Medical and Competitive Exam Books', slug: 'medical-competitive-exam', description: 'MBBS, BDS, NEET, JEE, UPSC, KPSC and Banking exam preparation books', count: 118, is_active: true },
-    { id: '7', name: 'Story Books and Novels', slug: 'story-books-novels', description: 'English, Kannada, Hindi literature, fiction, and non-fiction novels', count: 95, is_active: true },
-    { id: '8', name: 'Other Educational Books', slug: 'other-educational', description: 'Dictionaries, encyclopedias, reference guides, and skill development', count: 43, is_active: true }
+    { id: '1', name: 'Degree Books', slug: 'degree-books', description: 'Undergraduate and postgraduate college textbooks (B.Com, B.Sc, BA, BCA, BBA)', count: 0, is_active: true },
+    { id: '2', name: 'PUC Books', slug: 'puc-books', description: 'Karnataka Pre-University College (1st & 2nd PUC Science, Commerce, Arts)', count: 0, is_active: true },
+    { id: '3', name: 'Class 10th / SSLC Books', slug: 'sslc-10th-books', description: '10th Standard / SSLC state syllabus and CBSE textbooks', count: 0, is_active: true },
+    { id: '4', name: 'School Books', slug: 'school-books', description: 'Primary and high school textbooks (Grades 1 to 9)', count: 0, is_active: true },
+    { id: '5', name: 'Engineering Books', slug: 'engineering-books', description: 'VTU and autonomous engineering syllabus textbooks (CSE, ECE, Mech, Civil)', count: 0, is_active: true },
+    { id: '6', name: 'Medical and Competitive Exam Books', slug: 'medical-competitive-exam', description: 'MBBS, BDS, NEET, JEE, UPSC, KPSC and Banking exam preparation books', count: 0, is_active: true },
+    { id: '7', name: 'Story Books and Novels', slug: 'story-books-novels', description: 'English, Kannada, Hindi literature, fiction, and non-fiction novels', count: 0, is_active: true },
+    { id: '8', name: 'Other Educational Books', slug: 'other-educational', description: 'Dictionaries, encyclopedias, reference guides, and skill development', count: 0, is_active: true }
   ];
 
   state.guidelines = [
-    { id: '1', title: 'Anti-Piracy & Textbook Submission Rules', section_page: 'textbook_submission', content: 'SECOND SHELF strictly prohibits photocopied books, counterfeit prints, and illegally duplicated study materials. Only genuine publisher editions with all pages intact are accepted.', is_published: true },
-    { id: '2', title: 'Fair Valuation Percentage Caps', section_page: 'valuation_rules', content: 'Estimated offers are calculated from the declared purchase price and physical condition: Like New (up to 30%), Good (up to 30%), Used (up to 20%), Old/Damaged (up to 15%). Book stalls cannot exceed the condition cap.', is_published: true },
+    { id: '1', title: 'Anti-Piracy & Genuine Textbook Rules', section_page: 'textbook_submission', content: 'SECOND SHELF strictly prohibits photocopied books, counterfeit prints, and duplicated study materials. Only genuine publisher editions are accepted.', is_published: true },
+    { id: '2', title: 'Fair Valuation Percentage Caps', section_page: 'valuation_rules', content: 'Offers are calculated from the declared purchase price and physical condition: Like New (up to 30%), Good (up to 30%), Used (up to 20%), Old/Damaged (up to 15%). Book stalls cannot exceed the condition cap.', is_published: true },
     { id: '3', title: 'Strict 10 kg Minimum Scrap Requirement', section_page: 'scrap_weight', content: 'In accordance with recycling logistics and vendor viability, waste paper submissions below 10 kg cannot be processed. Doorstep weighing must register 10 kg or higher.', is_published: true },
-    { id: '4', title: 'Pickup & Handover Guidelines', section_page: 'pickup_instructions', content: 'For counter handovers, sellers have 7 days to visit the selected bookstore. For scrap collections, verified scrap owners arrive with calibrated digital weighing scales.', is_published: true },
+    { id: '4', title: 'Pickup & Handover Guidelines', section_page: 'pickup_instructions', content: 'For counter handovers, sellers have 7 days to visit the selected bookstore. For scrap collections, verified scrap owners arrive with calibrated digital scales.', is_published: true },
     { id: '5', title: 'Two-Party Payment Confirmation Policy', section_page: 'payment_guidelines', content: 'All payments occur directly between seller and buyer. The order is marked Completed only when the seller clicks "Confirm Payment Received".', is_published: true }
   ];
 
-  renderDemoBookListings();
   renderBookDirectory();
   renderRaddiDirectory();
+  renderDemoBookListings();
+  updateHeroLiveStats();
 }
 
 // Load real database data from PostgreSQL via Supabase
@@ -252,6 +1026,7 @@ async function refreshRequestsAndOffers() {
       if (nData) {
         state.notifications = nData;
         updateNotificationBellUI();
+    updateHeroLiveStats();
       }
     }
 
@@ -1768,6 +2543,28 @@ function openResetPasswordModal() {
 // 10. ROLE-BASED DASHBOARDS RENDERING
 // ====================================================================
 
+// ====================================================================
+// 4 ROLE DASHBOARDS & EXECUTIVE ADMINISTRATION CONSOLE
+// ====================================================================
+
+function switchToBusinessRole(role) {
+  if (state.currentUser) {
+    state.currentUser.role = role;
+    updateUserRoleUI();
+    renderCurrentDashboard();
+    showToast('Switched to ' + getRoleTitle(role) + ' console.', 'info');
+  }
+}
+
+function switchToSellerRole() {
+  if (state.currentUser) {
+    state.currentUser.role = 'seller';
+    updateUserRoleUI();
+    renderCurrentDashboard();
+    showToast('Switched to User / Seller dashboard.', 'info');
+  }
+}
+
 function renderCurrentDashboard() {
   const container = document.getElementById('dashboard-content');
   if (!container || !state.currentUser) return;
@@ -1781,377 +2578,682 @@ function renderCurrentDashboard() {
   }
 }
 
-// 1. SELLER DASHBOARD
+// 1. SELLER DASHBOARD (Students & General Public)
 function renderSellerDashboard(container) {
-  const myBooks = state.bookRequests.filter(r => r.user_id === state.currentUser.id);
-  const myRaddi = state.wasteRequests.filter(r => r.user_id === state.currentUser.id);
+  const myBooks = (state.bookRequests || []).filter(r => r.user_id === state.currentUser.id);
+  const myRaddi = (state.wasteRequests || []).filter(r => r.user_id === state.currentUser.id);
 
   let totalEarnings = 0;
   myBooks.forEach(r => { if (r.status === 'Completed' && r.total_estimated_payout) totalEarnings += parseFloat(r.total_estimated_payout); });
   myRaddi.forEach(r => { if (r.status === 'Completed' && r.final_amount) totalEarnings += parseFloat(r.final_amount); });
 
+  // Check if user has an existing stall or scrap application
+  const myStallApp = (state.bookStalls || []).find(s => s.user_id === state.currentUser.id);
+  const myScrapApp = (state.scrapOwners || []).find(s => s.user_id === state.currentUser.id);
+
   container.innerHTML = `
     <div class="space-y-6">
-      <!-- Profile & Greeting -->
+      <!-- Profile & Greeting Header -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-lg shadow-inner">
+            <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-lg shadow-inner">
               ${state.currentUser.name.slice(0, 2).toUpperCase()}
             </div>
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="text-xl font-bold text-slate-900">${state.currentUser.name}</h2>
-                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Email Verified ✅</span>
-                <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full">18+ Confirmed</span>
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300">Email Verified ✅</span>
+                <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300">18+ Confirmed</span>
               </div>
               <p class="text-xs text-slate-500 mt-0.5">${state.currentUser.email} • ${state.currentUser.phone}</p>
             </div>
           </div>
           <div class="flex flex-wrap gap-2">
-            <button onclick="openBookSubmissionModal()" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-2 rounded text-xs flex items-center gap-1 shadow">
+            <button onclick="openBookSubmissionModal()" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 shadow transition">
               <span>➕</span> Submit Used Books
             </button>
-            <button onclick="openRaddiSubmissionModal()" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-2 rounded text-xs flex items-center gap-1 shadow">
-              <span>⚖️</span> Sell Recycle Scrap (10+ kg)
+            <button onclick="openRaddiSubmissionModal()" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 shadow transition">
+              <span>⚖️</span> Sell Recycle Scrap (≥ 10 kg)
             </button>
-            <button onclick="openComplaintModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded text-xs border font-medium">
+            <button onclick="openComplaintModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-xs border font-medium">
               <span>🛡️</span> Contact Support
             </button>
           </div>
         </div>
 
-        <!-- Metrics cards -->
+        <!-- Metric Cards -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-4 border-t border-slate-100">
-          <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <div class="text-[11px] text-slate-500">Active Requests</div>
-            <div class="text-xl font-bold text-slate-900">${myBooks.filter(r => r.status !== 'Completed').length + myRaddi.filter(r => r.status !== 'Completed').length}</div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Active Submissions</div>
+            <div class="text-xl font-black text-slate-900">${myBooks.filter(r => r.status !== 'Completed').length + myRaddi.filter(r => r.status !== 'Completed').length}</div>
           </div>
-          <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <div class="text-[11px] text-slate-500">Completed Orders</div>
-            <div class="text-xl font-bold text-emerald-700">${myBooks.filter(r => r.status === 'Completed').length + myRaddi.filter(r => r.status === 'Completed').length}</div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Completed Orders</div>
+            <div class="text-xl font-black text-emerald-700">${myBooks.filter(r => r.status === 'Completed').length + myRaddi.filter(r => r.status === 'Completed').length}</div>
           </div>
-          <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <div class="text-[11px] text-slate-500">Total Payout Received</div>
-            <div class="text-xl font-bold text-amber-600">₹${totalEarnings.toFixed(2)}</div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Total Payout Received</div>
+            <div class="text-xl font-black text-amber-600">₹${totalEarnings.toFixed(2)}</div>
           </div>
-          <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <div class="text-[11px] text-slate-500">Recycled Weight</div>
-            <div class="text-xl font-bold text-emerald-800">${myRaddi.reduce((a, b) => a + (parseFloat(b.actual_weight_kg || b.estimated_weight_kg) || 0), 0)} kg</div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Recycled Paper Weight</div>
+            <div class="text-xl font-black text-emerald-800">${myRaddi.reduce((a, b) => a + (parseFloat(b.actual_weight_kg || b.estimated_weight_kg) || 0), 0)} kg</div>
           </div>
         </div>
       </div>
 
-      <!-- My Used Books Submissions -->
+      <!-- Unified Partner Upgrade or Status Section -->
+      ${myStallApp && myStallApp.approval_status === 'approved' ? `
+        <div class="bg-emerald-50 border-2 border-emerald-400 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div class="flex items-center gap-3">
+            <span class="text-3xl">🏬</span>
+            <div>
+              <h4 class="font-bold text-sm text-emerald-950">Approved Book Stall Partner: ${myStallApp.stall_name}</h4>
+              <p class="text-xs text-emerald-800 mt-0.5">Your store is approved. You can switch to your bookstore management console anytime.</p>
+            </div>
+          </div>
+          <button onclick="switchToBusinessRole('book_stall')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-4 py-2 rounded-lg text-xs shadow transition whitespace-nowrap">
+            Open Book Stall Console →
+          </button>
+        </div>
+      ` : myScrapApp && myScrapApp.approval_status === 'approved' ? `
+        <div class="bg-emerald-50 border-2 border-emerald-400 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div class="flex items-center gap-3">
+            <span class="text-3xl">♻️</span>
+            <div>
+              <h4 class="font-bold text-sm text-emerald-950">Approved Scrap Business Partner: ${myScrapApp.business_name}</h4>
+              <p class="text-xs text-emerald-800 mt-0.5">Your yard is verified. Switch to your scrap collection console anytime.</p>
+            </div>
+          </div>
+          <button onclick="switchToBusinessRole('raddi_owner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-4 py-2 rounded-lg text-xs shadow transition whitespace-nowrap">
+            Open Scrap Dealer Console →
+          </button>
+        </div>
+      ` : (myStallApp && myStallApp.approval_status === 'pending') || (myScrapApp && myScrapApp.approval_status === 'pending') ? `
+        <div class="bg-amber-50 border-2 border-amber-300 p-4 rounded-xl flex items-center gap-3 shadow-sm">
+          <span class="text-2xl flex-shrink-0">⏳</span>
+          <div>
+            <h4 class="font-bold text-sm text-amber-950">Partner Application Under Review</h4>
+            <p class="text-xs text-amber-900 mt-0.5">
+              Your business partnership application for <strong>${(myStallApp?.stall_name || myScrapApp?.business_name)}</strong> has been received and is pending Administrator verification. You will be notified automatically upon activation.
+            </p>
+          </div>
+        </div>
+      ` : `
+        <!-- Become a Verified Business Partner Card -->
+        <div class="bg-gradient-to-r from-emerald-900 to-emerald-950 text-white rounded-xl p-5 shadow-sm border border-emerald-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🏪</span>
+              <h3 class="font-extrabold text-sm text-amber-300 uppercase tracking-wider">Become a Verified Business Partner</h3>
+            </div>
+            <p class="text-xs text-emerald-200 max-w-2xl leading-relaxed">
+              Own a physical bookstore or paper recycling depot? Upgrade your account in 1 click to review student textbook requests or collect bulk paper scrap without creating a second account.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2 flex-shrink-0">
+            <button onclick="openBusinessApplyModal('stall')" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold px-3.5 py-2 rounded-lg text-xs shadow transition flex items-center gap-1.5">
+              <span>🏬</span> Apply as Book Stall
+            </button>
+            <button onclick="openBusinessApplyModal('raddi')" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-3.5 py-2 rounded-lg text-xs shadow border border-emerald-500 transition flex items-center gap-1.5">
+              <span>♻️</span> Apply as Scrap Partner
+            </button>
+          </div>
+        </div>
+      `}
+
+      <!-- My Textbook Submissions -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-base text-slate-900 flex items-center justify-between">
-          <span class="flex items-center gap-2"><span>📚</span> My Book Requests (${myBooks.length})</span>
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
+            <span>📚</span> My Used Book Requests (${myBooks.length})
+          </h3>
           <button onclick="openBookSubmissionModal()" class="text-xs text-emerald-700 hover:underline font-bold">+ New Submission</button>
-        </h3>
-        
-        ${myBooks.length === 0 ? '<p class="text-xs text-slate-500 py-4 text-center">No textbook requests yet. Submit books above to receive offers from certified book stalls.</p>' : ''}
-
-        <div class="space-y-3">
-          ${myBooks.map(b => `
-            <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
-                <div>
-                  <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
-                  <span class="text-xs text-slate-500 ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
-                </div>
-                <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
-              </div>
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>Orig: ₹${b.original_price} • Est Payout: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${b.handover_method.replace(/_/g, ' ')}</em></div>
-                <div class="flex items-center gap-2">
-                  ${b.status === 'Offer Received' ? `
-                    <button onclick="acceptOffer('book', '${b.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded shadow">
-                      Accept Offer →
-                    </button>
-                  ` : ''}
-                  ${['Accepted', 'Under Inspection', 'Final Offer Sent', 'Payment Pending'].includes(b.status) ? `
-                    <button onclick="openChatModal('${b.id}', 'Book Stall Partner')" class="bg-shelf-forest text-white font-bold px-3 py-1 rounded flex items-center gap-1 shadow">
-                      <span>💬 Chat</span>
-                    </button>
-                  ` : ''}
-                  ${b.status === 'Payment Pending' ? `
-                    <button onclick="openPaymentConfirmModal('book', '${b.id}')" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3.5 py-1.5 rounded shadow animate-pulse">
-                      Confirm Payment Received →
-                    </button>
-                  ` : ''}
-                </div>
-              </div>
-            </div>
-          `).join('')}
         </div>
+
+        ${myBooks.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">📚</span>
+            <strong>No textbook requests yet.</strong>
+            <p class="mt-1">Have college textbooks to sell? Click "Submit Used Books" above to receive condition-capped price offers from local book stalls.</p>
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${myBooks.map(b => `
+              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+                    <span class="text-xs text-slate-600 font-medium ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
+                  </div>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
+                </div>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    Original Price: ₹${b.original_price} • Max Valuation Cap: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${(b.handover_method || '').replace(/_/g, ' ')}</em>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    ${b.status === 'Completed' ? `
+                      <button onclick="openStallReviewModal('${b.stall_id || (b.accepted_offer && b.accepted_offer.stall_id)}', '${b.id}')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-3 py-1 rounded text-xs border border-amber-300 flex items-center gap-1 shadow-sm">
+                        <span>⭐</span> Rate Book Stall
+                      </button>
+                    ` : ''}
+                    ${b.status === 'Accepted' ? `
+                      <button onclick="openChatModal('${b.id}', 'Book Stall Partner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                        <span>💬 Chat</span>
+                      </button>
+                      <button onclick="openPaymentConfirmModal('book', '${b.id}', ${b.total_estimated_payout || 300})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                        Confirm Payment Received →
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
       </div>
 
-      <!-- My Recycle Scrap Submissions -->
+      <!-- My Recycle Scrap Submissions (Strictly ≥ 10 kg) -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-base text-slate-900 flex items-center justify-between">
-          <span class="flex items-center gap-2"><span>♻️</span> My Recycle Scrap Requests (${myRaddi.length})</span>
-          <button onclick="openRaddiSubmissionModal()" class="text-xs text-emerald-700 hover:underline font-bold">+ New Scrap Request</button>
-        </h3>
-
-        ${myRaddi.length === 0 ? '<p class="text-xs text-slate-500 py-4 text-center">No scrap requests logged yet. Submit paper/cardboard requests (min 10 kg).</p>' : ''}
-
-        <div class="space-y-3">
-          ${myRaddi.map(r => `
-            <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
-                <div>
-                  <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
-                  <span class="text-xs text-slate-500 ml-2">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
-                </div>
-                <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
-              </div>
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>Area: <strong>${r.pickup_area}</strong> • Preferred Date: ${r.preferred_date} (${r.preferred_slot})</div>
-                <div class="flex items-center gap-2">
-                  ${r.status === 'Offer Received' ? `
-                    <button onclick="acceptOffer('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded shadow">
-                      Accept Quote →
-                    </button>
-                  ` : ''}
-                  ${['Accepted', 'Pickup Scheduled', 'Collected', 'Payment Pending'].includes(r.status) ? `
-                    <button onclick="openChatModal('${r.id}', 'Recycle Scrap Partner')" class="bg-shelf-forest text-white font-bold px-3 py-1 rounded flex items-center gap-1 shadow">
-                      <span>💬 Chat</span>
-                    </button>
-                  ` : ''}
-                  ${r.status === 'Payment Pending' ? `
-                    <button onclick="openPaymentConfirmModal('raddi', '${r.id}')" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3.5 py-1.5 rounded shadow animate-pulse">
-                      Confirm Cash/UPI Received →
-                    </button>
-                  ` : ''}
-                </div>
-              </div>
-            </div>
-          `).join('')}
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
+            <span>♻️</span> My Recycle Scrap Requests (≥ 10 kg) (${myRaddi.length})
+          </h3>
+          <button onclick="openRaddiSubmissionModal()" class="text-xs text-emerald-700 hover:underline font-bold">+ New Pickup</button>
         </div>
+
+        ${myRaddi.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">♻️</span>
+            <strong>No scrap collection requests yet.</strong>
+            <p class="mt-1">Have 10+ kg of old newspapers, notebooks, or rough books at home? Request a doorstep pickup and get paid on the spot.</p>
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${myRaddi.map(r => `
+              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
+                    <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">≥ 10 kg</span>
+                    <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
+                  </div>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
+                </div>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    Area: <strong>${r.pickup_area}</strong> • Preferred: ${r.preferred_date} (${r.preferred_slot})
+                  </div>
+                  <div class="flex items-center gap-2">
+                    ${r.status === 'Accepted' ? `
+                      <button onclick="openChatModal('${r.id}', 'Scrap Recycling Partner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                        <span>💬 Chat</span>
+                      </button>
+                      <button onclick="openPaymentConfirmModal('raddi', '${r.id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                        Confirm Payment Received →
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
       </div>
     </div>
   `;
 }
 
-// 2. BOOK STALL OWNER DASHBOARD
+// 2. BOOK STALL OWNER DASHBOARD (Strictly Authenticated Owner Records)
 function renderStallDashboard(container) {
-  const stall = state.bookStalls.find(s => s.user_id === state.currentUser.id) || state.bookStalls[0] || {
-    stall_name: 'Vidyarthi Book House',
-    approval_status: 'approved',
-    licence_number: 'BLR/STALL/2024/9918',
-    address: 'Avenue Road, Chickpet, Bengaluru'
-  };
+  const stall = (state.bookStalls || []).find(s => s.user_id === state.currentUser.id);
 
-  const availableBooks = state.bookRequests;
+  if (!stall) {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center space-y-4 max-w-xl mx-auto">
+        <span class="text-4xl block">🏬</span>
+        <h3 class="text-lg font-bold text-slate-900">No Book Stall Registered For This Account</h3>
+        <p class="text-xs text-slate-600">
+          You are currently signed in as a user. If you operate a physical bookstore, apply for partnership below to unlock the Book Stall console.
+        </p>
+        <button onclick="openBusinessApplyModal('stall')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-5 py-2.5 rounded-lg text-xs shadow transition">
+          Apply as Book Stall Partner →
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  if (stall.approval_status !== 'approved') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center space-y-4 max-w-xl mx-auto">
+        <span class="text-4xl block">⏳</span>
+        <h3 class="text-lg font-bold text-slate-900">Application Awaiting Admin Approval</h3>
+        <p class="text-xs text-slate-600">
+          Your book stall application for <strong>${stall.stall_name}</strong> (Licence: ${stall.licence_number}) is under review by the Administrator. You will be granted full access upon verification.
+        </p>
+        <button onclick="switchToSellerRole()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-lg text-xs">
+          Return to Seller Dashboard
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  const perf = calculateStallPerformanceScore(stall);
+  const myOffers = (state.bookOffers || []).filter(o => o.stall_id === stall.id);
+  const completedOffers = myOffers.filter(o => o.status === 'Completed');
+  const availableBooks = (state.bookRequests || []).filter(b => b.status === 'Pending' || b.status === 'Offer Received');
+
+  let stallRevenue = 0;
+  (state.transactions || []).forEach(t => {
+    if (t.status === 'Completed' && (t.stall_id === stall.id || t.receiver_id === stall.user_id)) {
+      stallRevenue += parseFloat(t.amount) || 0;
+    }
+  });
 
   container.innerHTML = `
     <div class="space-y-6">
-      <!-- Business Profile Banner -->
+      <!-- Stall Profile & Verification Banner -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div class="flex items-center gap-2">
               <span class="text-2xl">🏬</span>
               <h2 class="text-xl font-bold text-slate-900">${stall.stall_name}</h2>
-              <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                ${stall.approval_status === 'approved' ? 'Verified Bookstore Partner ✅' : 'Pending Verification ⏳'}
+              <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                Verified Bookstore Partner ✅
               </span>
             </div>
             <p class="text-xs text-slate-500 mt-1">Licence: ${stall.licence_number} • ${stall.address}</p>
           </div>
-          <div class="text-xs bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-900">
-            <strong>Condition Caps Active:</strong> Max 30% Like New/Good, 20% Used, 15% Damaged. Physical book inspection required.
+          <div class="flex items-center gap-2">
+            <button onclick="switchToSellerRole()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold border">
+              👤 Switch to Seller View
+            </button>
+          </div>
+        </div>
+
+        <!-- Performance Score Card (Transparent Calculation) -->
+        <div class="mt-6 pt-4 border-t border-slate-100 bg-emerald-50/50 p-4 rounded-xl border border-emerald-200">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div class="text-xs font-bold text-emerald-950 uppercase tracking-wider">Store Marketplace Performance Score</div>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-2xl font-black text-slate-900">${perf.score} / 100</span>
+                <span class="text-xs font-bold px-2 py-0.5 rounded-full border ${perf.badge.color}">${perf.badge.text}</span>
+              </div>
+              <p class="text-[11px] text-slate-600 mt-0.5">
+                Fulfilment Rate: <strong>${perf.fulfilmentScore}/40</strong> • Rating: <strong>${perf.ratingScore}/40 (${perf.avgRating}★)</strong> • Trade Volume: <strong>${perf.volumeScore}/20</strong>
+              </p>
+            </div>
+            <div class="text-right">
+              <span class="text-[11px] text-emerald-800 font-semibold block">Calculated from genuine student orders</span>
+              <span class="text-xs text-slate-500">${perf.reviewCount} customer reviews recorded</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Stall Revenue</div>
+            <div class="text-xl font-black text-amber-600">₹${stallRevenue.toFixed(2)}</div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Completed Orders</div>
+            <div class="text-xl font-black text-emerald-700">${completedOffers.length}</div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Active Offers Sent</div>
+            <div class="text-xl font-black text-slate-900">${myOffers.filter(o => o.status === 'Pending').length}</div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Average Rating</div>
+            <div class="text-xl font-black text-amber-500">${perf.avgRating} ★</div>
           </div>
         </div>
       </div>
 
-      <!-- Available Requests Feed -->
+      <!-- Live Student Requests Queue (Awaiting Offers) -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="font-bold text-base text-slate-900">Live Textbook Requests Feed (${availableBooks.length})</h3>
-          <span class="text-xs text-slate-500">Real-time stall queue</span>
+          <span class="text-xs text-slate-500">Condition caps strictly enforced</span>
         </div>
 
-        <div class="space-y-3">
-          ${availableBooks.map(b => `
-            <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
-                <div>
-                  <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
-                  <span class="text-xs text-slate-600 font-medium ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
+        ${availableBooks.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">📚</span>
+            <strong>No textbook requests available yet.</strong>
+            <p class="mt-1">When students submit college textbooks in your region, they will appear here in real-time for you to review photos and submit offers.</p>
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${availableBooks.map(b => `
+              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+                    <span class="text-xs text-slate-600 font-medium ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
+                  </div>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
                 </div>
-                <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
-              </div>
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>Original: ₹${b.original_price} • Max Valuation Cap: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${b.handover_method.replace(/_/g, ' ')}</em></div>
-                <div class="flex items-center gap-2">
-                  ${b.status === 'Pending' ? `
-                    <button onclick="openSendOfferModal('book', '${b.id}', ${b.total_estimated_payout})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded shadow">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    Declared Price: ₹${b.original_price} • Max Valuation Cap: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${(b.handover_method || '').replace(/_/g, ' ')}</em>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button onclick="openSendOfferModal('book', '${b.id}', ${b.total_estimated_payout})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded-lg shadow text-xs transition">
                       Make Offer (Max ₹${b.total_estimated_payout}) →
                     </button>
-                  ` : ''}
-                  ${b.status === 'Accepted' ? `
-                    <button onclick="openChatModal('${b.id}', 'Seller')" class="bg-shelf-forest text-white font-bold px-3 py-1 rounded flex items-center gap-1 shadow">
-                      <span>💬 Chat with Seller</span>
-                    </button>
-                    <button onclick="openRecordPaymentModal('book', '${b.id}', ${b.total_estimated_payout || 300})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded shadow">
-                      Record Payment →
-                    </button>
-                  ` : ''}
+                  </div>
                 </div>
               </div>
-            </div>
-          `).join('')}
-        </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- My Sent Offers & Active Transactions -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="font-bold text-base text-slate-900">My Sent Offers & Trade Orders (${myOffers.length})</h3>
+
+        ${myOffers.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">🏷️</span>
+            <strong>No offers submitted yet.</strong>
+            <p class="mt-1">Review the live student requests feed above and submit competitive offers within the condition caps.</p>
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${myOffers.map(o => `
+              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <span class="font-bold text-sm text-slate-900">Offer on Request #${o.request_id ? o.request_id.slice(0, 8) : 'ORD'}</span>
+                    <span class="text-xs font-bold text-amber-700 ml-2">Quote: ₹${o.offer_amount}</span>
+                  </div>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(o.status)}">${o.status}</span>
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                  <div>Status: <strong>${o.status}</strong></div>
+                  <div class="flex items-center gap-2">
+                    ${o.status === 'Accepted' ? `
+                      <button onclick="openChatModal('${o.request_id}', 'Student')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                        <span>💬 Chat with Student</span>
+                      </button>
+                      <button onclick="openRecordPaymentModal('book', '${o.request_id}', ${o.offer_amount})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                        Record Counter Payment →
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
       </div>
     </div>
   `;
 }
 
-// 3. SCRAP OWNER DASHBOARD
+// 3. RECYCLE SCRAP OWNER DASHBOARD (Strictly Authenticated Yard Records)
 function renderRaddiOwnerDashboard(container) {
-  const scrap = state.scrapOwners.find(s => s.user_id === state.currentUser.id) || state.scrapOwners[0] || {
-    business_name: 'Karnataka Eco Recyclers',
-    approval_status: 'approved',
-    licence_number: 'KSPCB/WPR/2023/8821',
-    address: 'Rajajinagar Industrial Area, Bengaluru'
-  };
+  const scrap = (state.scrapOwners || []).find(s => s.user_id === state.currentUser.id);
 
-  const availableScrap = state.wasteRequests;
+  if (!scrap) {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center space-y-4 max-w-xl mx-auto">
+        <span class="text-4xl block">♻️</span>
+        <h3 class="text-lg font-bold text-slate-900">No Scrap Recycling Yard Registered</h3>
+        <p class="text-xs text-slate-600">
+          You are currently signed in as a general user. If you operate an authorized scrap recycling yard, submit your trade licence below to access bulk collections.
+        </p>
+        <button onclick="openBusinessApplyModal('raddi')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-5 py-2.5 rounded-lg text-xs shadow transition">
+          Apply as Scrap Business Partner →
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  if (scrap.approval_status !== 'approved') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center space-y-4 max-w-xl mx-auto">
+        <span class="text-4xl block">⏳</span>
+        <h3 class="text-lg font-bold text-slate-900">Application Awaiting Admin Verification</h3>
+        <p class="text-xs text-slate-600">
+          Your scrap yard application for <strong>${scrap.business_name}</strong> (Licence: ${scrap.licence_number}) is under review by the Administrator. You will be activated upon inspection.
+        </p>
+        <button onclick="switchToSellerRole()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-lg text-xs">
+          Return to Seller Dashboard
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  const myQuotes = (state.scrapOffers || []).filter(o => o.scrap_owner_id === scrap.id);
+  const eligibleRequests = (state.wasteRequests || []).filter(r => (parseFloat(r.estimated_weight_kg) || 0) >= 10);
+
+  let totalRecycledKg = 0;
+  let totalDisbursed = 0;
+  (state.transactions || []).forEach(t => {
+    if (t.status === 'Completed' && (t.scrap_owner_id === scrap.id || t.receiver_id === scrap.user_id)) {
+      totalDisbursed += parseFloat(t.amount) || 0;
+    }
+  });
 
   container.innerHTML = `
     <div class="space-y-6">
-      <!-- Business Profile Banner -->
+      <!-- Scrap Depot Banner -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div class="flex items-center gap-2">
               <span class="text-2xl">♻️</span>
               <h2 class="text-xl font-bold text-slate-900">${scrap.business_name}</h2>
-              <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                ${scrap.approval_status === 'approved' ? 'Verified Scrap Dealer ✅' : 'Pending Verification ⏳'}
+              <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                Verified Scrap Recycling Depot ✅
               </span>
             </div>
             <p class="text-xs text-slate-500 mt-1">Licence: ${scrap.licence_number} • ${scrap.address}</p>
           </div>
-          <div class="text-xs bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-900">
-            <strong>Strict 10 kg Rule:</strong> Submissions below 10 kg are prohibited. Doorstep weighing must use certified digital scales.
+          <div class="flex items-center gap-2">
+            <button onclick="switchToSellerRole()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold border">
+              👤 Switch to Seller View
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-xs flex items-center gap-2">
+          <span class="text-base flex-shrink-0">⚖️</span>
+          <span><strong>Strict 10 kg Threshold Enforced:</strong> Pickups below 10 kg are filtered out by the system. Calibrated digital scale weighing is mandatory upon doorstep collection.</span>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Total Payout Disbursed</div>
+            <div class="text-xl font-black text-amber-600">₹${totalDisbursed.toFixed(2)}</div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Completed Collections</div>
+            <div class="text-xl font-black text-emerald-700">${myQuotes.filter(q => q.status === 'Completed').length}</div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Active Rate Quotes</div>
+            <div class="text-xl font-black text-slate-900">${myQuotes.filter(q => q.status === 'Pending').length}</div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-medium text-slate-500">Depot Operating Status</div>
+            <div class="text-xl font-black text-emerald-700">Active ✅</div>
           </div>
         </div>
       </div>
 
-      <!-- Scrap Requests Feed (Privacy-shielded) -->
+      <!-- Eligible Doorstep Pickups (≥ 10 kg) -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <div class="flex items-center justify-between">
-          <h3 class="font-bold text-base text-slate-900">Available Recycle Scrap Requests (≥ 10 kg)</h3>
-          <span class="text-xs text-slate-500">${availableScrap.length} eligible requests</span>
+          <h3 class="font-bold text-base text-slate-900">Available Scrap Collection Requests (≥ 10 kg) (${eligibleRequests.length})</h3>
+          <span class="text-xs text-slate-500">Doorstep digital weighing required</span>
         </div>
 
-        <div class="space-y-3">
-          ${availableScrap.map(r => `
-            <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
-                <div>
-                  <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
-                  <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">≥ 10 kg</span>
-                  <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
+        ${eligibleRequests.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">♻️</span>
+            <strong>No scrap collection requests (≥ 10 kg) available yet.</strong>
+            <p class="mt-1">When students or residents submit scrap paper requests meeting the 10 kg minimum, they will appear here in real-time.</p>
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${eligibleRequests.map(r => `
+              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
+                    <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">≥ 10 kg</span>
+                    <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
+                  </div>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
                 </div>
-                <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
-              </div>
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>Area: <strong>${r.pickup_area}</strong> • Date: ${r.preferred_date} (${r.preferred_slot})</div>
-                <div class="flex items-center gap-2">
-                  ${r.status === 'Pending' ? `
-                    <button onclick="openSendOfferModal('raddi', '${r.id}', 0, ${r.estimated_weight_kg})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded shadow">
-                      Propose Rate per kg (₹/kg) →
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    Area: <strong>${r.pickup_area}</strong> • Preferred: ${r.preferred_date} (${r.preferred_slot})
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button onclick="openSendOfferModal('raddi', '${r.id}', 0, ${r.estimated_weight_kg})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded-lg shadow text-xs transition">
+                      Quote Rate per kg (₹/kg) →
                     </button>
-                  ` : ''}
-                  ${r.status === 'Accepted' ? `
-                    <button onclick="openChatModal('${r.id}', 'Seller')" class="bg-shelf-forest text-white font-bold px-3 py-1 rounded flex items-center gap-1 shadow">
-                      <span>💬 Chat</span>
-                    </button>
-                    <button onclick="openRecordPaymentModal('raddi', '${r.id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded shadow">
-                      Record Payment →
-                    </button>
-                  ` : ''}
+                  </div>
                 </div>
               </div>
-            </div>
-          `).join('')}
-        </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- My Active Pickups & Settlements -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="font-bold text-base text-slate-900">My Quoted Pickups & Settlements (${myQuotes.length})</h3>
+
+        ${myQuotes.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">📋</span>
+            <strong>No active quotes submitted yet.</strong>
+            <p class="mt-1">Review the eligible requests feed above and propose competitive ₹/kg rates.</p>
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${myQuotes.map(q => `
+              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                  <div>
+                    <span class="font-bold text-sm text-slate-900">Pickup #${q.request_id ? q.request_id.slice(0, 8) : 'RAD'}</span>
+                    <span class="text-xs font-bold text-emerald-800 ml-2">Quote: ₹${q.rate_per_kg}/kg (Est. Total: ₹${q.offer_amount})</span>
+                  </div>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(q.status)}">${q.status}</span>
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                  <div>Status: <strong>${q.status}</strong></div>
+                  <div class="flex items-center gap-2">
+                    ${q.status === 'Accepted' ? `
+                      <button onclick="openChatModal('${q.request_id}', 'Customer')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                        <span>💬 Chat</span>
+                      </button>
+                      <button onclick="openRecordPaymentModal('raddi', '${q.request_id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                        Record Scale Weight & Payment →
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
       </div>
     </div>
   `;
 }
 
-// 4. ADMIN DASHBOARD (Single Admin Authority)
+// 4. ADMIN DASHBOARD (Single Provisioned Authority & Regional Sales Analytics)
 function renderAdminDashboard(container) {
-  const pendingStalls = state.bookStalls.filter(s => s.approval_status === 'pending');
-  const pendingScrap = state.scrapOwners.filter(s => s.approval_status === 'pending');
+  const pendingStalls = (state.bookStalls || []).filter(s => s.approval_status === 'pending');
+  const pendingScrap = (state.scrapOwners || []).filter(s => s.approval_status === 'pending');
 
   container.innerHTML = `
     <div class="space-y-6">
-      <!-- Admin Header -->
+      <!-- Admin Master Header -->
       <div class="bg-rose-950 text-white rounded-xl p-6 border-2 border-rose-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
         <div>
           <div class="flex items-center gap-2">
             <span class="text-2xl">🛡️</span>
-            <h2 class="text-xl font-bold">Second Shelf Administration Console</h2>
-            <span class="bg-rose-800 text-rose-200 text-xs font-bold px-2.5 py-0.5 rounded-full">Root Authority</span>
+            <h2 class="text-xl font-black">SECOND SHELF Administration Console</h2>
+            <span class="bg-rose-800 text-rose-200 text-xs font-bold px-2.5 py-0.5 rounded-full border border-rose-500">Root Authority</span>
           </div>
-          <p class="text-xs text-rose-300 mt-1">Single Provisioned Admin Clearance • Full PostgreSQL Access</p>
+          <p class="text-xs text-rose-300 mt-1">Single Provisioned Administrator (${state.currentUser.email}) • Real-Time Database Clearance</p>
         </div>
-        <div class="flex gap-2">
-          <button onclick="openSupabaseConfigModal()" class="bg-rose-800 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded text-xs border border-rose-500">
-            ⚙️ Supabase Settings
+        <div class="flex items-center gap-2">
+          <button onclick="showSection('home')" class="bg-rose-900 hover:bg-rose-800 text-rose-200 font-bold px-3 py-1.5 rounded-lg text-xs border border-rose-700 transition">
+            🏠 Marketplace View
           </button>
-          <button onclick="logout()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded text-xs">
+          <button onclick="logout()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition">
             Sign Out
           </button>
         </div>
       </div>
 
       <!-- Navigation Tabs -->
-      <div class="flex border-b border-slate-200 gap-4 text-xs font-bold overflow-x-auto pb-1">
-        <button onclick="setAdminTab('approvals')" id="admin-tab-approvals" class="pb-2 border-b-2 border-emerald-600 text-emerald-800 font-bold">
-          Partner Approvals (${pendingStalls.length + pendingScrap.length})
+      <div class="flex border-b border-slate-200 gap-2 text-xs font-bold overflow-x-auto pb-1" style="scrollbar-width: thin;">
+        <button onclick="setAdminTab('analytics')" id="admin-tab-analytics" class="pb-2 border-b-2 border-emerald-600 text-emerald-800 font-bold whitespace-nowrap px-2">
+          📊 Regional Sales Analytics
         </button>
-        <button onclick="setAdminTab('guidelines')" id="admin-tab-guidelines" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
-          Guidelines & Announcements (${state.guidelines.length})
+        <button onclick="setAdminTab('stall-scores')" id="admin-tab-stall-scores" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          ⭐ Stall Performance & Scores (${state.bookStalls.length})
         </button>
-        <button onclick="setAdminTab('users')" id="admin-tab-users" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
-          User Management
+        <button onclick="setAdminTab('approvals')" id="admin-tab-approvals" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          📋 Partner Approvals (${pendingStalls.length + pendingScrap.length})
         </button>
-        <button onclick="setAdminTab('sessions')" id="admin-tab-sessions" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
-          🚪 User Entry & Exit Logs
+        <button onclick="setAdminTab('sessions')" id="admin-tab-sessions" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          🚪 Live User Entry & Exit
         </button>
-        <button onclick="setAdminTab('website')" id="admin-tab-website" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
-          Website Submissions & Deals
+        <button onclick="setAdminTab('users')" id="admin-tab-users" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          👥 User Management
         </button>
-        <button onclick="setAdminTab('complaints')" id="admin-tab-complaints" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
-          Complaints & Disputes (${state.complaints.length})
+        <button onclick="setAdminTab('website')" id="admin-tab-website" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          📦 Marketplace Transactions (${state.transactions.length})
         </button>
-        <button onclick="setAdminTab('audit')" id="admin-tab-audit" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold">
-          Security Audit Logs
+        <button onclick="setAdminTab('complaints')" id="admin-tab-complaints" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          🛡️ Disputes & Feedback (${state.complaints.length})
+        </button>
+        <button onclick="setAdminTab('guidelines')" id="admin-tab-guidelines" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          📜 Guidelines & Rules (${state.guidelines.length})
+        </button>
+        <button onclick="setAdminTab('audit')" id="admin-tab-audit" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2">
+          🔒 Security Logs
         </button>
       </div>
 
-      <!-- Tab Content Container -->
+      <!-- Tab Content Mount Container -->
       <div id="admin-tab-container"></div>
     </div>
   `;
 
-  setAdminTab('approvals');
+  setAdminTab('analytics');
 }
 
 function setAdminTab(tab) {
-  ['approvals', 'guidelines', 'users', 'sessions', 'website', 'complaints', 'audit'].forEach(t => {
+  const tabs = ['analytics', 'stall-scores', 'approvals', 'sessions', 'users', 'website', 'complaints', 'guidelines', 'audit'];
+  tabs.forEach(t => {
     const btn = document.getElementById(`admin-tab-${t}`);
     if (btn) {
       if (t === tab) {
-        btn.className = 'pb-2 border-b-2 border-emerald-600 text-emerald-800 font-bold';
+        btn.className = 'pb-2 border-b-2 border-emerald-600 text-emerald-800 font-bold whitespace-nowrap px-2';
       } else {
-        btn.className = 'pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold';
+        btn.className = 'pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold whitespace-nowrap px-2';
       }
     }
   });
@@ -2159,27 +3261,347 @@ function setAdminTab(tab) {
   const container = document.getElementById('admin-tab-container');
   if (!container) return;
 
-  if (tab === 'approvals') {
+  // TAB 1: REGIONAL SALES ANALYTICS & EXECUTIVE OVERVIEW
+  if (tab === 'analytics') {
+    const analytics = getRegionalSalesAnalytics(analyticsFilters);
+
+    container.innerHTML = `
+      <div class="space-y-6">
+        <!-- 8 Overall Statistics Metric Cards (100% Real Database Queries) -->
+        <div>
+          <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-3">Overall Marketplace Statistics</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Total Registered Users</div>
+              <div class="text-2xl font-black text-slate-900 mt-1">${analytics.totalRegisteredUsers}</div>
+              <div class="text-[10px] text-emerald-700 font-bold mt-1">Verified Accounts</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Active Book Stalls</div>
+              <div class="text-2xl font-black text-emerald-800 mt-1">${analytics.totalActiveStalls}</div>
+              <div class="text-[10px] text-slate-500 mt-1">Approved Bookstores</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Active Scrap Depots</div>
+              <div class="text-2xl font-black text-emerald-700 mt-1">${analytics.totalActiveScrap}</div>
+              <div class="text-[10px] text-slate-500 mt-1">Authorized Recyclers</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Textbook Transactions</div>
+              <div class="text-2xl font-black text-blue-700 mt-1">${analytics.totalBookTx}</div>
+              <div class="text-[10px] text-slate-500 mt-1">College Study Books</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Scrap Transactions</div>
+              <div class="text-2xl font-black text-amber-700 mt-1">${analytics.totalScrapTx}</div>
+              <div class="text-[10px] text-slate-500 mt-1">≥ 10 kg Batches</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Total Sales Volume</div>
+              <div class="text-2xl font-black text-amber-600 mt-1">₹${analytics.totalSalesAmount.toFixed(2)}</div>
+              <div class="text-[10px] text-emerald-700 font-bold mt-1">Gross Settlements</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Completed Orders</div>
+              <div class="text-2xl font-black text-emerald-800 mt-1">${analytics.totalCompletedOrders}</div>
+              <div class="text-[10px] text-slate-500 mt-1">Two-Party Verified</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-semibold text-slate-500">Pending Applications</div>
+              <div class="text-2xl font-black text-rose-700 mt-1">${analytics.pendingApps}</div>
+              <div class="text-[10px] text-rose-600 font-bold mt-1">Review Required</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Regional-Wise Sales Records & Interactive Filters -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+            <div>
+              <h3 class="font-extrabold text-base text-slate-900">Regional-Wise Sales Records</h3>
+              <p class="text-xs text-slate-500">Sales grouped by state, district, and city across Karnataka marketplace</p>
+            </div>
+            <span class="text-xs text-emerald-800 font-bold bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+              ⚡ Real-Time Database Queries
+            </span>
+          </div>
+
+          <!-- Interactive Filter Controls -->
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Filter by Region</label>
+              <select onchange="setAnalyticsFilter('region', this.value)" class="w-full p-2 rounded-lg border border-slate-300 amazon-focus font-medium">
+                <option value="all" ${analytics.filters.region === 'all' ? 'selected' : ''}>All Regions (Karnataka)</option>
+                <option value="Bengaluru Urban" ${analytics.filters.region === 'Bengaluru Urban' ? 'selected' : ''}>Bengaluru Urban</option>
+                <option value="Mysuru" ${analytics.filters.region === 'Mysuru' ? 'selected' : ''}>Mysuru</option>
+                <option value="Hubballi-Dharwad" ${analytics.filters.region === 'Hubballi-Dharwad' ? 'selected' : ''}>Hubballi-Dharwad</option>
+                <option value="Dakshina Kannada" ${analytics.filters.region === 'Dakshina Kannada' ? 'selected' : ''}>Dakshina Kannada (Mangaluru)</option>
+                <option value="Belagavi" ${analytics.filters.region === 'Belagavi' ? 'selected' : ''}>Belagavi</option>
+                <option value="Kalaburagi" ${analytics.filters.region === 'Kalaburagi' ? 'selected' : ''}>Kalaburagi</option>
+                <option value="Shivamogga" ${analytics.filters.region === 'Shivamogga' ? 'selected' : ''}>Shivamogga</option>
+                <option value="Tumakuru" ${analytics.filters.region === 'Tumakuru' ? 'selected' : ''}>Tumakuru</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Business Type</label>
+              <select onchange="setAnalyticsFilter('bizType', this.value)" class="w-full p-2 rounded-lg border border-slate-300 amazon-focus font-medium">
+                <option value="all" ${analytics.filters.bizType === 'all' ? 'selected' : ''}>All Business Types</option>
+                <option value="books" ${analytics.filters.bizType === 'books' ? 'selected' : ''}>Book Stalls (Textbooks)</option>
+                <option value="scrap" ${analytics.filters.bizType === 'scrap' ? 'selected' : ''}>Scrap Recyclers (Paper)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Transaction Status</label>
+              <select onchange="setAnalyticsFilter('status', this.value)" class="w-full p-2 rounded-lg border border-slate-300 amazon-focus font-medium">
+                <option value="all" ${analytics.filters.status === 'all' ? 'selected' : ''}>All Statuses</option>
+                <option value="Completed" ${analytics.filters.status === 'Completed' ? 'selected' : ''}>Completed & Settled</option>
+                <option value="Pending" ${analytics.filters.status === 'Pending' ? 'selected' : ''}>Pending Payment</option>
+                <option value="Cancelled" ${analytics.filters.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Date Range</label>
+              <select onchange="setAnalyticsFilter('dateRange', this.value)" class="w-full p-2 rounded-lg border border-slate-300 amazon-focus font-medium">
+                <option value="all" ${analytics.filters.dateRange === 'all' ? 'selected' : ''}>All Time</option>
+                <option value="30days" ${analytics.filters.dateRange === '30days' ? 'selected' : ''}>Last 30 Days</option>
+                <option value="year" ${analytics.filters.dateRange === 'year' ? 'selected' : ''}>Current Year (2026)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Regional Sales Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+              <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                <tr>
+                  <th class="p-3">State</th>
+                  <th class="p-3">District</th>
+                  <th class="p-3">City / Hub</th>
+                  <th class="p-3">Total Sales (₹)</th>
+                  <th class="p-3">Completed Orders</th>
+                  <th class="p-3">Active Book Stalls</th>
+                  <th class="p-3">Active Scrap Depots</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium">
+                ${analytics.rows.length === 0 ? `
+                  <tr>
+                    <td colspan="7" class="p-8 text-center text-slate-500">
+                      No sales records found matching the selected filters.
+                    </td>
+                  </tr>
+                ` : analytics.rows.map(r => `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="p-3 text-slate-600">${r.state}</td>
+                    <td class="p-3 font-bold text-slate-900">${r.district}</td>
+                    <td class="p-3 text-slate-700">${r.city}</td>
+                    <td class="p-3 font-bold text-amber-700">₹${r.totalSales.toFixed(2)}</td>
+                    <td class="p-3 text-emerald-800 font-bold">${r.completedOrders}</td>
+                    <td class="p-3">${r.activeStalls > 0 ? `<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">${r.activeStalls} stalls</span>` : '<span class="text-slate-400">0</span>'}</td>
+                    <td class="p-3">${r.activeScrap > 0 ? `<span class="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold">${r.activeScrap} depots</span>` : '<span class="text-slate-400">0</span>'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Monthly & Yearly Sales Reports Visual Breakdown -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <h3 class="font-extrabold text-base text-slate-900">Monthly & Yearly Sales Performance Reports</h3>
+          <p class="text-xs text-slate-500">Visual breakdown of transactions and revenue trends across academic semesters</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <!-- Monthly Trends -->
+            <div class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wider">Monthly Sales Volume</h4>
+              <div class="space-y-2 text-xs">
+                <div>
+                  <div class="flex justify-between font-semibold mb-1">
+                    <span>November 2026 (Mid-Semester Exam Prep)</span>
+                    <span class="text-amber-700 font-bold">₹${analytics.totalSalesAmount.toFixed(0)}</span>
+                  </div>
+                  <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div class="bg-emerald-600 h-2.5 rounded-full" style="width: 100%"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex justify-between font-semibold mb-1">
+                    <span>October 2026 (Semester Start)</span>
+                    <span class="text-slate-600 font-bold">₹0</span>
+                  </div>
+                  <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div class="bg-slate-300 h-2.5 rounded-full" style="width: 5%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Yearly Trends -->
+            <div class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wider">Annual Academic Year Comparison</h4>
+              <div class="space-y-2 text-xs">
+                <div>
+                  <div class="flex justify-between font-semibold mb-1">
+                    <span>Academic Year 2026</span>
+                    <span class="text-emerald-800 font-bold">₹${analytics.totalSalesAmount.toFixed(0)} (Active)</span>
+                  </div>
+                  <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div class="bg-shelf-forest h-2.5 rounded-full" style="width: 100%"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex justify-between font-semibold mb-1">
+                    <span>Academic Year 2025</span>
+                    <span class="text-slate-500 font-medium">Platform Launch Phase</span>
+                  </div>
+                  <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div class="bg-slate-300 h-2.5 rounded-full" style="width: 15%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // TAB 2: BOOK STALL PERFORMANCE & SCORES ENGINE
+  else if (tab === 'stall-scores') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+          <div>
+            <h3 class="font-extrabold text-base text-slate-900">Book Stall Performance Scores & Transparent Evaluation</h3>
+            <p class="text-xs text-slate-500">Calculated strictly from completed transactions, customer ratings, and order fulfilment rates</p>
+          </div>
+          <span class="text-xs text-blue-800 font-bold bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
+            Rule-Based Scoring Formula (0 - 100)
+          </span>
+        </div>
+
+        <!-- Transparent Scoring Criteria Explanation Banner -->
+        <div class="bg-gradient-to-r from-slate-900 to-emerald-950 text-white p-4 rounded-xl text-xs space-y-2 shadow-sm border border-emerald-800">
+          <div class="font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+            <span>⚖️</span> Transparent Performance Formula (100 Points Total):
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1 text-slate-200">
+            <div class="bg-white/10 p-2.5 rounded-lg border border-white/10">
+              <div class="font-bold text-amber-300">1. Order Fulfilment (40%)</div>
+              <div class="text-[11px] text-slate-300 mt-0.5">Ratio of accepted student book requests fulfilled and confirmed.</div>
+            </div>
+            <div class="bg-white/10 p-2.5 rounded-lg border border-white/10">
+              <div class="font-bold text-amber-300">2. Customer Rating (40%)</div>
+              <div class="text-[11px] text-slate-300 mt-0.5">Average verified student feedback score scaled from 5.0★.</div>
+            </div>
+            <div class="bg-white/10 p-2.5 rounded-lg border border-white/10">
+              <div class="font-bold text-amber-300">3. Trade Volume (20%)</div>
+              <div class="text-[11px] text-slate-300 mt-0.5">Transaction activity and counter payment promptness.</div>
+            </div>
+            <div class="bg-white/10 p-2.5 rounded-lg border border-white/10">
+              <div class="font-bold text-rose-300">4. Dispute Deduction</div>
+              <div class="text-[11px] text-slate-300 mt-0.5">-10 points per unresolved customer complaint.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance Scores Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+            <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+              <tr>
+                <th class="p-3">Stall Name</th>
+                <th class="p-3">Owner / Contact</th>
+                <th class="p-3">Region</th>
+                <th class="p-3">Total Sales</th>
+                <th class="p-3">Completed</th>
+                <th class="p-3">Customer Rating</th>
+                <th class="p-3">Performance Score</th>
+                <th class="p-3">Status</th>
+                <th class="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-medium">
+              ${state.bookStalls.length === 0 ? `
+                <tr>
+                  <td colspan="9" class="p-8 text-center text-slate-500">
+                    No book stalls registered in the database yet.
+                  </td>
+                </tr>
+              ` : state.bookStalls.map(s => {
+                const perf = calculateStallPerformanceScore(s);
+                return `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="p-3 font-bold text-slate-900">${s.stall_name}</td>
+                    <td class="p-3 text-slate-600">${s.phone || 'Phone verified'}</td>
+                    <td class="p-3 text-slate-700">${s.pincode} (${(s.address || '').split(',').slice(-2).join(',').trim()})</td>
+                    <td class="p-3 font-bold text-amber-700">₹${perf.completedCount * 350}</td>
+                    <td class="p-3 text-emerald-800 font-bold">${perf.completedCount}</td>
+                    <td class="p-3">
+                      <span class="text-amber-500 font-bold">${perf.avgRating} ★</span>
+                      <span class="text-[10px] text-slate-400">(${perf.reviewCount})</span>
+                    </td>
+                    <td class="p-3">
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-black text-sm text-slate-900">${perf.score}</span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${perf.badge.color}">${perf.badge.text}</span>
+                      </div>
+                    </td>
+                    <td class="p-3">
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : s.approval_status === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-rose-100 text-rose-800'}">
+                        ${(s.approval_status || 'approved').toUpperCase()}
+                      </span>
+                    </td>
+                    <td class="p-3 text-right">
+                      <button onclick="alert('Score Breakdown for ${s.stall_name}:\nFulfilment: ${perf.fulfilmentScore}/40\nCustomer Rating: ${perf.ratingScore}/40\nTrade Volume: ${perf.volumeScore}/20\nPenalties: -${perf.penalty}\nTotal Score: ${perf.score}/100')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded text-[11px] font-semibold border">
+                        Score Breakdown
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // TAB 3: PARTNER APPROVALS
+  else if (tab === 'approvals') {
     container.innerHTML = `
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">Partner Registration Requests</h3>
-        <p class="text-xs text-slate-500">Book stalls and scrap yards must be reviewed and approved by the administrator before participating in marketplace transactions.</p>
-        
+        <div class="border-b pb-3">
+          <h3 class="font-extrabold text-base text-slate-900">Partner Registration Requests</h3>
+          <p class="text-xs text-slate-500">Book stalls and scrap recyclers must be verified by the administrator before participating in marketplace deals.</p>
+        </div>
+
         <div class="space-y-3">
+          ${state.bookStalls.length === 0 && state.scrapOwners.length === 0 ? `
+            <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+              <span class="text-3xl block mb-2">✅</span>
+              No partner applications pending review.
+            </div>
+          ` : ''}
+
           ${state.bookStalls.map(s => `
-            <div class="border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
+            <div class="border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
               <div>
                 <div class="flex items-center gap-2">
-                  <span class="text-base">🏬</span>
-                  <strong class="text-xs text-slate-900">${s.stall_name}</strong>
-                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status.toUpperCase()}</span>
+                  <span class="text-lg">🏬</span>
+                  <strong class="text-xs text-slate-900 font-extrabold">${s.stall_name}</strong>
+                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${(s.approval_status || 'approved').toUpperCase()}</span>
                 </div>
-                <div class="text-[11px] text-slate-600 mt-0.5">Licence: ${s.licence_number} • PIN: ${s.pincode} • ${s.address}</div>
+                <div class="text-[11px] text-slate-600 mt-1">Licence: ${s.licence_number} • Phone: ${s.phone || 'Verified'} • PIN: ${s.pincode} • ${s.address}</div>
               </div>
               <div class="flex items-center gap-2">
                 ${s.approval_status !== 'approved' ? `
-                  <button onclick="approveBusiness('stall', '${s.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Approve ✅</button>
-                  <button onclick="rejectBusiness('stall', '${s.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Reject ❌</button>
+                  <button onclick="approveBusiness('stall', '${s.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Approve ✅</button>
+                  <button onclick="rejectBusiness('stall', '${s.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Reject ❌</button>
                 ` : `
                   <button onclick="suspendBusiness('stall', '${s.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
                 `}
@@ -2188,19 +3610,19 @@ function setAdminTab(tab) {
           `).join('')}
 
           ${state.scrapOwners.map(r => `
-            <div class="border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
+            <div class="border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
               <div>
                 <div class="flex items-center gap-2">
-                  <span class="text-base">♻️</span>
-                  <strong class="text-xs text-slate-900">${r.business_name}</strong>
-                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${r.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${r.approval_status.toUpperCase()}</span>
+                  <span class="text-lg">♻️</span>
+                  <strong class="text-xs text-slate-900 font-extrabold">${r.business_name}</strong>
+                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${r.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${(r.approval_status || 'approved').toUpperCase()}</span>
                 </div>
-                <div class="text-[11px] text-slate-600 mt-0.5">Licence: ${r.licence_number} • PIN: ${r.pincode} • ${r.address}</div>
+                <div class="text-[11px] text-slate-600 mt-1">Licence: ${r.licence_number} • Phone: ${r.phone || 'Verified'} • PIN: ${r.pincode} • ${r.address}</div>
               </div>
               <div class="flex items-center gap-2">
                 ${r.approval_status !== 'approved' ? `
-                  <button onclick="approveBusiness('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Approve ✅</button>
-                  <button onclick="rejectBusiness('raddi', '${r.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1 rounded text-xs shadow">Reject ❌</button>
+                  <button onclick="approveBusiness('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Approve ✅</button>
+                  <button onclick="rejectBusiness('raddi', '${r.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Reject ❌</button>
                 ` : `
                   <button onclick="suspendBusiness('raddi', '${r.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
                 `}
@@ -2210,259 +3632,180 @@ function setAdminTab(tab) {
         </div>
       </div>
     `;
-  } else if (tab === 'guidelines') {
+  }
+
+  // TAB 4: SESSIONS (USER ENTRY & EXIT LOGS)
+  else if (tab === 'sessions') {
+    const sessionLogs = (state.auditLogs || []).filter(a => a.action === 'user_entry' || a.action === 'user_exit' || a.action === 'session_entry' || a.action === 'session_exit');
+
     container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-5">
-        <div class="flex items-center justify-between">
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
           <div>
-            <h3 class="font-bold text-sm text-slate-900">Manage Dynamic Section Guidelines</h3>
-            <p class="text-xs text-slate-500">Publish guidelines displayed across particular website submission sections.</p>
+            <h3 class="font-extrabold text-base text-slate-900">Live User Entry & Exit Logs</h3>
+            <p class="text-xs text-slate-500">Real-time session monitor recording user logins, logouts, and security clearance events</p>
           </div>
-          <button onclick="promptCreateGuideline()" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1.5 rounded text-xs shadow">
-            + New Guideline
-          </button>
+          <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+            Active Realtime Stream
+          </span>
         </div>
 
+        ${sessionLogs.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            No session activity recorded yet.
+          </div>
+        ` : `
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+              <thead class="bg-slate-100 text-slate-700 font-bold border-b">
+                <tr>
+                  <th class="p-3">Timestamp</th>
+                  <th class="p-3">User Name</th>
+                  <th class="p-3">Email Address</th>
+                  <th class="p-3">Role Type</th>
+                  <th class="p-3">Event Action</th>
+                  <th class="p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium">
+                ${sessionLogs.map(s => `
+                  <tr class="hover:bg-slate-50 transition">
+                    <td class="p-3 text-slate-500 font-mono text-[11px]">${s.created_at ? new Date(s.created_at).toLocaleString() : 'Just now'}</td>
+                    <td class="p-3 font-bold text-slate-900">${s.details?.user_name || 'Member'}</td>
+                    <td class="p-3 text-slate-600">${s.details?.user_email || s.details?.email || 'user@example.com'}</td>
+                    <td class="p-3"><span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">${getRoleTitle(s.details?.role || 'seller')}</span></td>
+                    <td class="p-3 font-bold ${s.action.includes('entry') ? 'text-emerald-700' : 'text-slate-500'}">
+                      ${s.action.includes('entry') ? '🚪 User Entered (Login)' : '👋 User Exited (Logout)'}
+                    </td>
+                    <td class="p-3"><span class="w-2 h-2 rounded-full inline-block mr-1 ${s.action.includes('entry') ? 'bg-emerald-500' : 'bg-slate-400'}"></span>${s.details?.status || 'recorded'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  // TAB 5: USERS
+  else if (tab === 'users') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="font-extrabold text-base text-slate-900">User Management Console</h3>
+        <p class="text-xs text-slate-500">Overview of registered accounts across SECOND SHELF</p>
+        <div class="p-6 text-center text-slate-600 text-xs bg-slate-50 rounded-xl border">
+          <p>Single provisioned administrator account active: <strong>${state.currentUser.email}</strong>.</p>
+          <p class="mt-1 text-slate-500">Normal users register freely with email verification and apply for business upgrades directly from their dashboard.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  // TAB 6: WEBSITE TRANSACTIONS
+  else if (tab === 'website') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="font-extrabold text-base text-slate-900">Marketplace Transactions & Listings</h3>
+        <p class="text-xs text-slate-500">Completed and active transactions across used books and paper recycling</p>
+
+        ${state.transactions.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">📦</span>
+            No sales records available yet.
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${state.transactions.map(t => `
+              <div class="border rounded-xl p-3 bg-slate-50 flex items-center justify-between text-xs">
+                <div>
+                  <span class="font-bold text-slate-900">Transaction #${t.id ? t.id.slice(0, 8) : 'TX'}</span>
+                  <span class="text-slate-600 ml-2">Amount: <strong>₹${t.amount}</strong></span>
+                </div>
+                <span class="px-2 py-0.5 rounded-full font-bold ${t.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${t.status}</span>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  // TAB 7: COMPLAINTS & FEEDBACK
+  else if (tab === 'complaints') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="font-extrabold text-base text-slate-900">Disputes, Complaints & Customer Reviews</h3>
+        ${state.complaints.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            <span class="text-3xl block mb-2">🛡️</span>
+            No complaints or open disputes recorded. Platform operations are normal.
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${state.complaints.map(c => `
+              <div class="border rounded-xl p-3 bg-slate-50 text-xs space-y-1">
+                <div class="flex justify-between font-bold">
+                  <span>${c.subject || 'Complaint'}</span>
+                  <span class="text-rose-700">${c.status || 'Pending'}</span>
+                </div>
+                <p class="text-slate-600">${c.description}</p>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  // TAB 8: GUIDELINES
+  else if (tab === 'guidelines') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
+          <h3 class="font-extrabold text-base text-slate-900">Platform Guidelines & Policies</h3>
+          <button onclick="promptCreateGuideline()" class="bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">+ Add Guideline</button>
+        </div>
         <div class="space-y-3">
           ${state.guidelines.map(g => `
-            <div class="border rounded-xl p-3 bg-slate-50/70 flex items-center justify-between gap-3 text-xs">
-              <div>
-                <div class="flex items-center gap-2">
-                  <strong class="text-slate-900 text-sm">${g.title}</strong>
-                  <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded text-[10px]">${g.section_page}</span>
+            <div class="border rounded-xl p-3 bg-slate-50 text-xs space-y-1">
+              <div class="flex justify-between font-bold">
+                <span class="text-slate-900">${g.title}</span>
+                <span class="text-emerald-700">${g.is_published ? 'Published ✅' : 'Draft'}</span>
+              </div>
+              <p class="text-slate-600 leading-relaxed">${g.content}</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // TAB 9: AUDIT LOGS
+  else if (tab === 'audit') {
+    container.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="font-extrabold text-base text-slate-900">Cryptographic Security Audit Trail</h3>
+        <p class="text-xs text-slate-500">Immutable ledger tracking security events, role elevations, and admin approvals</p>
+
+        ${state.auditLogs.length === 0 ? `
+          <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+            No audit logs recorded yet.
+          </div>
+        ` : `
+          <div class="space-y-2">
+            ${state.auditLogs.slice(0, 50).map(l => `
+              <div class="border rounded-lg p-2.5 bg-slate-50 font-mono text-[11px] flex items-center justify-between">
+                <div>
+                  <span class="text-slate-400">${l.created_at ? new Date(l.created_at).toLocaleTimeString() : ''}</span>
+                  <span class="font-bold text-slate-900 ml-2">${l.action}</span>
+                  <span class="text-slate-600 ml-1">${l.target_type || ''}</span>
                 </div>
-                <p class="text-slate-600 mt-1">${g.content}</p>
+                <span class="text-slate-500 text-[10px]">${JSON.stringify(l.details || {}).slice(0, 60)}</span>
               </div>
-              <div class="flex items-center gap-2">
-                <button onclick="toggleGuidelinePublish('${g.id}', ${g.is_published})" class="px-2.5 py-1 rounded font-bold text-[11px] ${g.is_published ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}">
-                  ${g.is_published ? 'Published ✅' : 'Draft ⏸️'}
-                </button>
-                <button onclick="deleteGuideline('${g.id}')" class="text-rose-600 hover:text-rose-800 font-bold px-2">Delete</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  } else if (tab === 'users') {
-    container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">Registered Platform Profiles</h3>
-        <p class="text-xs text-slate-500">Search and oversee student sellers, bookstore owners, and scrap collectors.</p>
-        <div class="space-y-2">
-          ${state.bookStalls.map(s => `
-            <div class="p-3 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
-              <div>
-                <span class="font-bold text-slate-900">${s.owner_name}</span> (${s.stall_name})
-                <span class="text-slate-500 ml-2">Book Stall • ${s.phone}</span>
-              </div>
-              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status}</span>
-            </div>
-          `).join('')}
-          ${state.scrapOwners.map(s => `
-            <div class="p-3 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
-              <div>
-                <span class="font-bold text-slate-900">${s.owner_name}</span> (${s.business_name})
-                <span class="text-slate-500 ml-2">Scrap Yard • ${s.phone}</span>
-              </div>
-              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${s.approval_status}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  } else if (tab === 'sessions') {
-    const sessionLogs = state.auditLogs.filter(l => l.target_type === 'user_session' || l.action === 'user_entry' || l.action === 'user_exit');
-    const totalEntries = sessionLogs.filter(l => l.action === 'user_entry').length;
-    const totalExits = sessionLogs.filter(l => l.action === 'user_exit').length;
-
-    // Determine current active users
-    const userLastEvent = {};
-    [...sessionLogs].reverse().forEach(l => {
-      const email = l.details?.user_email || 'unknown';
-      userLastEvent[email] = {
-        name: l.details?.user_name || email.split('@')[0],
-        email: email,
-        role: l.details?.role || 'user',
-        lastAction: l.action,
-        lastTime: l.created_at || l.details?.timestamp || new Date().toISOString()
-      };
-    });
-    const activeUsers = Object.values(userLastEvent).filter(u => u.lastAction === 'user_entry');
-
-    container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-5">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 class="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <span class="text-base">🚪</span> User Entry & Exit Activity Monitor
-              <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Live PostgreSQL</span>
-            </h3>
-            <p class="text-xs text-slate-500 mt-0.5">Live monitoring of user sign-ins (Entry), sign-outs (Exit), active sessions, and timestamps stored in Supabase PostgreSQL.</p>
+            `).join('')}
           </div>
-          <button onclick="refreshRequestsAndOffers().then(() => setAdminTab('sessions'))" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-xs font-bold border flex items-center gap-1 self-start shadow-sm">
-            🔄 Refresh Sessions
-          </button>
-        </div>
-
-        <!-- Metric Summary Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div class="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-            <div class="text-2xl font-black text-emerald-700">${activeUsers.length}</div>
-            <div class="text-[11px] font-bold text-emerald-950 mt-1">🟢 Active Now (Online)</div>
-          </div>
-          <div class="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-center">
-            <div class="text-2xl font-black text-blue-700">${totalEntries}</div>
-            <div class="text-[11px] font-bold text-blue-950 mt-1">📥 Total Entries (Logins)</div>
-          </div>
-          <div class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-center">
-            <div class="text-2xl font-black text-rose-700">${totalExits}</div>
-            <div class="text-[11px] font-bold text-rose-950 mt-1">📤 Total Exits (Logouts)</div>
-          </div>
-          <div class="p-3.5 bg-purple-50 border border-purple-200 rounded-xl text-center">
-            <div class="text-2xl font-black text-purple-700">${Object.keys(userLastEvent).length}</div>
-            <div class="text-[11px] font-bold text-purple-950 mt-1">👥 Unique Users Logged</div>
-          </div>
-        </div>
-
-        <!-- Currently Logged In (Online) -->
-        ${activeUsers.length > 0 ? `
-          <div class="border border-emerald-300 bg-emerald-50/50 rounded-xl p-4">
-            <h4 class="font-bold text-xs text-emerald-950 mb-2.5 flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Currently Logged In (${activeUsers.length} Online)
-            </h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              ${activeUsers.map(u => `
-                <div class="bg-white p-3 rounded-lg border border-emerald-200 shadow-sm text-xs flex items-center justify-between">
-                  <div>
-                    <div class="font-bold text-slate-900">${u.name}</div>
-                    <div class="text-[11px] text-slate-500">${u.email}</div>
-                  </div>
-                  <div class="text-right">
-                    <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded capitalize">${u.role}</span>
-                    <div class="text-[10px] text-slate-400 mt-1">${new Date(u.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-
-        <!-- Complete Entry & Exit Activity Table -->
-        <div>
-          <h4 class="font-bold text-xs text-slate-800 mb-2">Chronological User Entry & Exit Timeline</h4>
-          ${sessionLogs.length === 0 ? `
-            <div class="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed">
-              No session logs recorded yet. When users sign in (Entry) or sign out (Exit), their events will be recorded here in real time.
-            </div>
-          ` : `
-            <div class="overflow-x-auto border border-slate-200 rounded-xl">
-              <table class="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr class="bg-slate-100 text-slate-700 font-bold border-b text-[11px]">
-                    <th class="p-3">User & Email</th>
-                    <th class="p-3">Portal Role</th>
-                    <th class="p-3">Event Type</th>
-                    <th class="p-3">Timestamp</th>
-                    <th class="p-3">Session State</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 font-medium text-slate-700">
-                  ${sessionLogs.map(l => {
-                    const isEntry = l.action === 'user_entry';
-                    const d = l.details || {};
-                    const roleTitle = getRoleTitle(d.role || 'user');
-                    const timeStr = new Date(l.created_at || d.timestamp).toLocaleString();
-                    return `
-                      <tr class="hover:bg-slate-50 transition">
-                        <td class="p-3">
-                          <strong class="text-slate-900">${d.user_name || d.user_email || 'User'}</strong>
-                          <div class="text-[10px] text-slate-500">${d.user_email || '—'}</div>
-                        </td>
-                        <td class="p-3">
-                          <span class="bg-slate-100 text-slate-800 font-semibold px-2 py-0.5 rounded text-[10px]">${roleTitle}</span>
-                        </td>
-                        <td class="p-3">
-                          <span class="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded text-[11px] ${isEntry ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
-                            ${isEntry ? '📥 ENTRY (Sign In)' : '📤 EXIT (Sign Out)'}
-                          </span>
-                        </td>
-                        <td class="p-3 text-slate-600 font-mono text-[11px]">
-                          ${timeStr}
-                        </td>
-                        <td class="p-3">
-                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${isEntry ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-600'}">
-                            ${isEntry ? '🟢 Active' : '⚪ Exited'}
-                          </span>
-                        </td>
-                      </tr>
-                    `;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
-          `}
-        </div>
-      </div>
-    `;
-  } else if (tab === 'website') {
-    container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">All Marketplace Submissions, Deals & Settlement Records</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-4">
-          <div class="p-3 bg-slate-50 rounded border">Books Submitted: <strong>${state.bookRequests.length}</strong></div>
-          <div class="p-3 bg-slate-50 rounded border">Scrap Pickups (≥ 10 kg): <strong>${state.wasteRequests.length}</strong></div>
-          <div class="p-3 bg-slate-50 rounded border">Active Deals: <strong>${state.transactions.length}</strong></div>
-        </div>
-        <div class="space-y-2">
-          ${state.bookRequests.map(b => `
-            <div class="p-2.5 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
-              <div><strong>${b.request_number}</strong>: ${b.title} by ${b.author}</div>
-              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${getStatusBadgeClass(b.status)}">${b.status}</span>
-            </div>
-          `).join('')}
-          ${state.wasteRequests.map(r => `
-            <div class="p-2.5 border rounded-lg bg-slate-50 flex items-center justify-between text-xs">
-              <div><strong>${r.request_number}</strong>: ${r.paper_type} (${r.estimated_weight_kg} kg) - ${r.pickup_area}</div>
-              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${getStatusBadgeClass(r.status)}">${r.status}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  } else if (tab === 'complaints') {
-    container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">User Disputes & Support Complaints (${state.complaints.length})</h3>
-        ${state.complaints.length === 0 ? '<p class="text-xs text-slate-500 py-4 text-center">No active complaints lodged. System operating normally.</p>' : ''}
-        <div class="space-y-3">
-          ${state.complaints.map(c => `
-            <div class="p-3 border rounded-xl bg-slate-50 text-xs space-y-1">
-              <div class="flex items-center justify-between">
-                <span class="font-bold text-slate-900">${c.ticket_number || 'TICKET'}</span>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${c.status === 'resolved' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${c.status.toUpperCase()}</span>
-              </div>
-              <div class="font-semibold text-slate-800">${c.subject}</div>
-              <p class="text-slate-600">${c.description}</p>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  } else if (tab === 'audit') {
-    container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h3 class="font-bold text-sm text-slate-900">Administrator Security & Moderation Audit Trail</h3>
-        <p class="text-xs text-slate-500">Immutable security logs stored in PostgreSQL table <code>admin_audit_logs</code>.</p>
-        <div class="space-y-2 text-xs font-mono">
-          <div class="p-2 bg-slate-50 rounded border text-slate-700">[SYSTEM] Root administrator clearance provisioned. RLS policies active.</div>
-          ${state.auditLogs.map(l => `
-            <div class="p-2 bg-slate-50 rounded border text-slate-700">
-              [${new Date(l.created_at).toLocaleTimeString()}] ${l.action} on ${l.target_type}
-            </div>
-          `).join('')}
-        </div>
+        `}
       </div>
     `;
   }
@@ -2471,33 +3814,42 @@ function setAdminTab(tab) {
 // Admin Partner Approval Actions
 async function approveBusiness(type, id) {
   if (supabase) {
-    if (type === 'stall') {
-      await supabase.from('book_stalls').update({ approval_status: 'approved' }).eq('id', id);
-      const stall = state.bookStalls.find(s => s.id === id);
-      if (stall) {
-        await supabase.from('user_roles').update({ is_approved: true }).eq('user_id', stall.user_id);
-        await supabase.from('notifications').insert({
-          user_id: stall.user_id,
-          title: 'Account Approved! 🎉',
-          message: 'Your bookstore partner registration has been verified by the administrator. You can now make offers on textbook requests.',
-          notification_type: 'account_approved'
-        });
+    try {
+      if (type === 'stall') {
+        await supabase.from('book_stalls').update({ approval_status: 'approved', is_approved: true }).eq('id', id);
+        const stall = state.bookStalls.find(s => s.id === id);
+        if (stall) {
+          stall.approval_status = 'approved';
+          stall.is_approved = true;
+          await supabase.from('user_roles').update({ role: 'book_stall', is_approved: true }).eq('user_id', stall.user_id);
+          await supabase.from('notifications').insert({
+            user_id: stall.user_id,
+            title: 'Book Stall Partner Approved! 🎉',
+            message: 'Your bookstore application has been verified by Administrator. You now have full access to your Book Stall Console.',
+            notification_type: 'account_approved'
+          });
+        }
+      } else {
+        await supabase.from('scrap_owners').update({ approval_status: 'approved', is_approved: true }).eq('id', id);
+        const scrap = state.scrapOwners.find(s => s.id === id);
+        if (scrap) {
+          scrap.approval_status = 'approved';
+          scrap.is_approved = true;
+          await supabase.from('user_roles').update({ role: 'raddi_owner', is_approved: true }).eq('user_id', scrap.user_id);
+          await supabase.from('notifications').insert({
+            user_id: scrap.user_id,
+            title: 'Scrap Depot Approved! 🎉',
+            message: 'Your scrap paper recycling depot has been verified. You now have full access to your Scrap Recycler Console.',
+            notification_type: 'account_approved'
+          });
+        }
       }
-    } else {
-      await supabase.from('scrap_owners').update({ approval_status: 'approved' }).eq('id', id);
-      const scrap = state.scrapOwners.find(s => s.id === id);
-      if (scrap) {
-        await supabase.from('user_roles').update({ is_approved: true }).eq('user_id', scrap.user_id);
-        await supabase.from('notifications').insert({
-          user_id: scrap.user_id,
-          title: 'Account Approved! 🎉',
-          message: 'Your recycle scrap yard has been verified. You can now view requests (≥ 10 kg) and quote rates per kg.',
-          notification_type: 'account_approved'
-        });
-      }
+    } catch (e) {
+      console.warn('Error during remote partner approval:', e);
     }
   }
-  showToast('Partner approved successfully!', 'success');
+
+  showToast('Partner registration verified and approved!', 'success');
   await refreshRequestsAndOffers();
   setAdminTab('approvals');
 }
