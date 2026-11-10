@@ -76,6 +76,25 @@
 </head>
 <body class="bg-shelf-cream text-slate-800 antialiased min-h-screen flex flex-col font-sans">
 
+  <!-- First-Visit Location Access Request Notification -->
+  <div id="location-consent-banner" class="hidden bg-emerald-900 border-b border-emerald-700 text-white px-4 py-2.5 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 shadow-md z-40 relative">
+    <div class="flex items-center gap-2">
+      <span class="text-base flex-shrink-0">📍</span>
+      <span>Allow location access to find nearby book stalls and recycling businesses.</span>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <button onclick="requestBrowserLocation()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold px-3 py-1 rounded text-xs transition shadow-sm">
+        Allow Location Access
+      </button>
+      <button onclick="openLocationModal()" class="bg-emerald-800 hover:bg-emerald-700 text-emerald-100 font-semibold px-2.5 py-1 rounded text-xs border border-emerald-600 transition">
+        Select Manually
+      </button>
+      <button onclick="dismissLocationBanner()" class="text-slate-300 hover:text-white px-1.5 text-sm font-bold" title="Dismiss">
+        &times;
+      </button>
+    </div>
+  </div>
+
   <!-- ==================================================================== -->
   <!-- MAIN NAVIGATION BAR (Amazon-Inspired Dark Green / Slate)             -->
   <!-- ==================================================================== -->
@@ -99,11 +118,11 @@
         </a>
 
         <!-- Location Badge (Amazon style) -->
-        <div class="hidden lg:flex items-center text-white text-xs gap-1 cursor-pointer hover:border hover:border-white/40 p-1.5 rounded">
+        <div onclick="openLocationModal()" class="hidden lg:flex items-center text-white text-xs gap-1.5 cursor-pointer hover:border hover:border-white/40 p-1.5 rounded transition" title="Change Location">
           <span class="text-amber-400 text-base">📍</span>
           <div class="flex flex-col leading-tight">
-            <span class="text-slate-300 text-[10px]" id="nav-location-label">Deliver / Pickup</span>
-            <span class="font-bold text-slate-100">Bengaluru 560001</span>
+            <span class="text-slate-300 text-[10px]">Delivering / Searching in:</span>
+            <span class="font-bold text-slate-100" id="nav-location-text">Hubli, Karnataka</span>
           </div>
         </div>
 
@@ -138,6 +157,21 @@
         <!-- Account, Role Dashboard & CTA -->
         <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           
+          <!-- Header Location Indicator & Change Selector -->
+          <button 
+            onclick="openLocationModal()" 
+            id="header-location-btn" 
+            class="flex items-center gap-1.5 text-white hover:text-amber-300 px-2.5 py-1.5 rounded-md text-xs font-semibold border border-emerald-700 hover:border-amber-400 bg-emerald-950/70 transition shadow-sm flex-shrink-0"
+            title="Change Location (Delivering & Searching In)"
+          >
+            <span class="text-sm text-amber-400">📍</span>
+            <div class="flex flex-col text-left leading-tight hidden xs:flex">
+              <span class="text-[9px] text-emerald-200">Delivering / Searching in:</span>
+              <span class="font-bold text-amber-300 truncate max-w-[130px] sm:max-w-[170px]" id="header-location-text">Hubli, Karnataka</span>
+            </div>
+            <span class="text-[10px] text-slate-300 ml-0.5">▼</span>
+          </button>
+
           <!-- Real-Time Notification Bell -->
           <button 
             onclick="openNotificationsModal()" 
@@ -853,6 +887,32 @@
         </div>
       </div>
 
+      <!-- Available Book Stalls in Selected Region -->
+      <div class="mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <span>🏬</span> Certified Book Stalls in <span id="nearby-stalls-loc-label" class="text-emerald-700">Karnataka</span>
+            </h2>
+            <p class="text-xs text-slate-500">Book stalls prioritized by your detected/selected city for direct counter handover.</p>
+          </div>
+          <button onclick="openLocationModal()" class="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 self-start sm:self-auto">
+            <span>📍</span> Change City
+          </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="available-book-stalls-cards">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Live Student Book Requests Heading -->
+      <div class="border-t border-slate-200 pt-6 mb-4">
+        <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <span>📚</span> Student Textbook Requests & Valuation Offers
+        </h2>
+        <p class="text-xs text-slate-500">Live listings submitted by students awaiting counter inspection or pickup.</p>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="book-directory-cards">
         <!-- Rendered by JS -->
       </div>
@@ -879,6 +939,32 @@
           <span><strong>Notice:</strong> Recyclers service requests of 10 kg and above only. Below 10 kg is blocked on frontend and backend database constraints.</span>
           <button onclick="openPolicyModal('cancellation-policy')" class="text-amber-800 underline font-semibold ml-2">Read Weight Policy</button>
         </div>
+      </div>
+
+      <!-- Approved Scrap & Recycle Depots in Selected Region -->
+      <div class="mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <span>♻️</span> Approved Scrap Depots & Recyclers in <span id="nearby-scrap-loc-label" class="text-emerald-700">Karnataka</span>
+            </h2>
+            <p class="text-xs text-slate-500">Verified recycling dealers prioritized by your selected area for doorstep collection (≥ 10 kg).</p>
+          </div>
+          <button onclick="openLocationModal()" class="text-xs font-bold text-emerald-800 hover:text-emerald-900 flex items-center gap-1 self-start sm:self-auto">
+            <span>📍</span> Change City
+          </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="approved-scrap-owners-cards">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Live Scrap Pickup Submissions Heading -->
+      <div class="border-t border-slate-200 pt-6 mb-4">
+        <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <span>⚖️</span> Active Household & College Paper Scrap Submissions (≥ 10 kg)
+        </h2>
+        <p class="text-xs text-slate-500">Weight verified pickups awaiting certified dealer dispatch.</p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="raddi-directory-cards">
@@ -1537,8 +1623,12 @@
     <!-- ==================================================================== -->
   <!-- MODAL: UNIFIED USER & PARTNER AUTHENTICATION (Modern & Secure)      -->
   <!-- ==================================================================== -->
+    <!-- ==================================================================== -->
+  <!-- MODAL: UNIFIED USER & PARTNER AUTHENTICATION (Modern & Secure)      -->
+  <!-- Supports Normal Users, Book Stall Owners, Scrap Owners & Admin       -->
+  <!-- ==================================================================== -->
   <div id="modal-auth" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border border-slate-200 max-h-[92vh] flex flex-col transition-all">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-900 border border-slate-200 max-h-[94vh] flex flex-col transition-all">
       
       <!-- Top Modal Header -->
       <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
@@ -1547,15 +1637,15 @@
             📚
           </div>
           <div>
-            <h3 class="text-base font-extrabold text-slate-900">SECOND SHELF Account</h3>
-            <p class="text-[11px] text-slate-500">Students, Book Stalls & Scrap Recycling Partners</p>
+            <h3 class="text-base font-extrabold text-slate-900">SECOND SHELF Portal</h3>
+            <p class="text-[11px] text-slate-500">Sign in or register as a User, Book Stall, or Scrap Recycler</p>
           </div>
         </div>
         <button onclick="closeModal('modal-auth')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
       </div>
 
       <!-- Active Session Notice (When user is already signed in) -->
-      <div id="modal-active-session-banner" class="hidden bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 flex items-center justify-between gap-2 mt-3 shadow-sm">
+      <div id="modal-active-session-banner" class="hidden bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 flex items-center justify-between gap-2 mt-3 shadow-sm flex-shrink-0">
         <div class="flex items-center gap-2">
           <span class="text-base">👤</span>
           <span>Signed in as <strong id="modal-current-user-name" class="text-slate-900">User</strong> (<span id="modal-current-user-role" class="font-bold text-emerald-800">Member</span>)</span>
@@ -1565,13 +1655,13 @@
         </button>
       </div>
 
-      <!-- Auth Switcher Tabs (Sign In / Create Account) -->
+      <!-- Auth Switcher Tabs (Sign In / Register) -->
       <div class="grid grid-cols-2 p-1 bg-slate-100 rounded-xl mt-3 flex-shrink-0 font-bold text-xs text-center border border-slate-200">
         <button type="button" id="tab-auth-signin" onclick="switchAuthTab('signin')" class="py-2 rounded-lg bg-white text-slate-900 shadow-sm transition">
           Sign In
         </button>
         <button type="button" id="tab-auth-signup" onclick="switchAuthTab('signup')" class="py-2 rounded-lg text-slate-600 hover:text-slate-900 transition">
-          Create Account
+          Register New Account
         </button>
       </div>
 
@@ -1586,7 +1676,7 @@
           </div>
           <div id="signin-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
             <span class="text-base flex-shrink-0">✅</span>
-            <span id="signin-success-msg" class="leading-relaxed">Sign in successful! Redirecting to your dashboard...</span>
+            <span id="signin-success-msg" class="leading-relaxed">Sign in successful! Entering your dashboard...</span>
           </div>
 
           <form id="form-auth-signin" onsubmit="handleUnifiedSignIn(event)" class="space-y-3">
@@ -1650,16 +1740,45 @@
             </button>
           </form>
 
-          <div class="text-center pt-3 border-t border-slate-200 text-xs text-slate-600">
-            New to SECOND SHELF? 
-            <button onclick="switchAuthTab('signup')" class="text-emerald-700 font-bold hover:underline">
-              Create an account
+          <!-- Quick Registration Links for Partners -->
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
+            <div class="font-bold text-slate-800 text-[11px]">New Business Partner?</div>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="switchAuthTab('signup'); switchRegType('stall')" class="text-blue-700 hover:underline font-semibold flex items-center gap-1">
+                <span>🏬</span> Register as Book Stall Owner
+              </button>
+              <span class="text-slate-300">•</span>
+              <button onclick="switchAuthTab('signup'); switchRegType('scrap')" class="text-emerald-700 hover:underline font-semibold flex items-center gap-1">
+                <span>♻️</span> Register as Scrap Business Owner
+              </button>
+            </div>
+          </div>
+
+          <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
+            Need a student/seller account? 
+            <button onclick="switchAuthTab('signup'); switchRegType('user')" class="text-emerald-700 font-bold hover:underline">
+              Create Normal User Account
             </button>
           </div>
         </div>
 
-        <!-- 2. CREATE ACCOUNT (SIGN UP) TAB -->
+        <!-- 2. REGISTRATION TAB (3 SEPARATE REGISTRATION OPTIONS) -->
         <div id="view-auth-signup" class="space-y-3 hidden">
+          
+          <!-- 3-Way Registration Type Selector -->
+          <div class="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl text-[11px] font-bold text-center border border-slate-200">
+            <button type="button" id="reg-type-user-btn" onclick="switchRegType('user')" class="py-1.5 rounded-lg bg-white text-slate-900 shadow-sm transition">
+              👤 Normal User
+            </button>
+            <button type="button" id="reg-type-stall-btn" onclick="switchRegType('stall')" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">
+              🏬 Book Stall
+            </button>
+            <button type="button" id="reg-type-scrap-btn" onclick="switchRegType('scrap')" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">
+              ♻️ Scrap Owner
+            </button>
+          </div>
+
+          <!-- Alert Messages -->
           <div id="signup-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
             <span class="text-base flex-shrink-0">⚠️</span>
             <span id="signup-error-msg" class="leading-relaxed">Error creating account. Please check your details.</span>
@@ -1669,113 +1788,211 @@
             <span id="signup-success-msg" class="leading-relaxed">Account created! Check your email to verify your address.</span>
           </div>
 
-          <form id="form-auth-signup" onsubmit="handleUnifiedSignUp(event)" class="space-y-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
-              <input 
-                type="text" 
-                required 
-                id="auth-signup-name" 
-                placeholder="e.g. Ramesh Kumar" 
-                class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
-              />
+          <!-- OPTION A: NORMAL USER REGISTRATION FORM -->
+          <div id="form-reg-user-container">
+            <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[11px] text-blue-950 mb-3">
+              <strong>👤 Normal User Registration:</strong> Register with full name, email, password, and phone number to buy/sell used college textbooks and request doorstep paper scrap pickups.
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form id="form-reg-user" onsubmit="handleNormalUserSignUp(event)" class="space-y-3">
               <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
-                <input 
-                  type="email" 
-                  required 
-                  id="auth-signup-email" 
-                  placeholder="ramesh@college.edu" 
-                  class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
-                />
+                <label class="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+                <input type="text" required id="reg-user-name" placeholder="e.g. Ramesh Kumar" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
               </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                  <input type="email" required id="reg-user-email" placeholder="ramesh@college.edu" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                  <input type="tel" required id="reg-user-phone" placeholder="+91 98765 43210" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Password *</label>
+                  <div class="relative">
+                    <input type="password" required minlength="8" id="reg-user-password" placeholder="Min 8 chars" class="w-full text-xs pl-3 pr-8 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
+                    <button type="button" onclick="togglePasswordVisibility('reg-user-password', this)" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-700 text-xs">👁️</button>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Confirm Password *</label>
+                  <div class="relative">
+                    <input type="password" required minlength="8" id="reg-user-confirm" placeholder="Re-enter password" class="w-full text-xs pl-3 pr-8 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
+                    <button type="button" onclick="togglePasswordVisibility('reg-user-confirm', this)" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-700 text-xs">👁️</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-xs flex items-start gap-2">
+                <input type="checkbox" id="reg-user-age" required checked class="mt-0.5 rounded text-amber-600 cursor-pointer" />
+                <label for="reg-user-age" class="text-amber-950 text-[11px] leading-snug cursor-pointer">
+                  I confirm that I am <strong>18 years of age or older</strong> (Digital Personal Data Protection Act compliance).
+                </label>
+              </div>
+
+              <button type="submit" id="btn-reg-user" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
+                <span>Create User Account & Verify Email</span> →
+              </button>
+            </form>
+          </div>
+
+          <!-- OPTION B: BOOK STALL OWNER REGISTRATION FORM -->
+          <div id="form-reg-stall-container" class="hidden">
+            <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[11px] text-blue-950 mb-3">
+              <strong>🏬 Book Stall Owner Registration:</strong> Fill out your bookstore information. Your application will be submitted with <strong>PENDING</strong> status for Administrator review.
+            </div>
+
+            <form id="form-reg-stall" onsubmit="handleBookStallSignUp(event)" class="space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Owner Name *</label>
+                  <input type="text" required id="reg-stall-owner" placeholder="e.g. Rajesh Gowda" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Book Stall / Store Name *</label>
+                  <input type="text" required id="reg-stall-name" placeholder="e.g. Vidyarthi Book Bureau" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                  <input type="email" required id="reg-stall-email" placeholder="store@example.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                  <input type="tel" required id="reg-stall-phone" placeholder="+91 98450 12345" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+              </div>
+
               <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">Mobile Phone *</label>
-                <input 
-                  type="tel" 
-                  required 
-                  id="auth-signup-phone" 
-                  placeholder="+91 98765 43210" 
-                  class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
-                />
+                <label class="block text-xs font-bold text-slate-700 mb-1">Business Address *</label>
+                <input type="text" required id="reg-stall-address" placeholder="Physical shop building, street & door number" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
               </div>
-            </div>
 
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Create Password (min 8 characters) *</label>
-              <div class="relative">
-                <input 
-                  type="password" 
-                  required 
-                  minlength="8" 
-                  id="auth-signup-password" 
-                  placeholder="Create a strong password" 
-                  class="w-full text-xs pl-3 pr-10 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
-                />
-                <button 
-                  type="button" 
-                  onclick="togglePasswordVisibility('auth-signup-password', this)" 
-                  class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs"
-                >
-                  👁️
-                </button>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
+                  <input type="text" required id="reg-stall-state" value="Karnataka" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">District *</label>
+                  <input type="text" required id="reg-stall-district" value="Dharwad" placeholder="e.g. Dharwad / Bengaluru" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
+                  <input type="text" required id="reg-stall-city" value="Hubli" placeholder="e.g. Hubli" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Location / Area *</label>
+                  <input type="text" required id="reg-stall-location" placeholder="e.g. Vidyanagar" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Confirm Password *</label>
-              <div class="relative">
-                <input 
-                  type="password" 
-                  required 
-                  minlength="8" 
-                  id="auth-signup-confirm" 
-                  placeholder="Re-enter password" 
-                  class="w-full text-xs pl-3 pr-10 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
-                />
-                <button 
-                  type="button" 
-                  onclick="togglePasswordVisibility('auth-signup-confirm', this)" 
-                  class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs"
-                >
-                  👁️
-                </button>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Trade / Shop Licence No. (Optional)</label>
+                  <input type="text" id="reg-stall-licence" placeholder="e.g. HBL/TRD/2026/014" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Account Password *</label>
+                  <input type="password" required minlength="8" id="reg-stall-password" placeholder="Min 8 characters" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
               </div>
+
+              <div class="bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 font-medium">
+                ⏳ <strong>Approval Notice:</strong> After submitting, your status will be set to <strong>PENDING</strong>. The Administrator will review your bookstore details before granting access to the Book Stall Owner Dashboard.
+              </div>
+
+              <button type="submit" id="btn-reg-stall" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
+                <span>Submit Book Stall Registration for Admin Review</span> →
+              </button>
+            </form>
+          </div>
+
+          <!-- OPTION C: RECYCLE & SCRAP BUSINESS OWNER REGISTRATION FORM -->
+          <div id="form-reg-scrap-container" class="hidden">
+            <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-[11px] text-amber-950 mb-3">
+              <strong>♻️ Recycle & Scrap Owner Registration:</strong> Register your paper recycling depot or scrap yard. Applications require Administrator approval before accessing the collection dashboard.
             </div>
 
-            <!-- 18+ Age & DPDP Act Checkbox -->
-            <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-xs flex items-start gap-2">
-              <input type="checkbox" id="auth-signup-age" required checked class="mt-0.5 rounded text-amber-600 cursor-pointer" />
-              <label for="auth-signup-age" class="text-amber-950 text-[11px] leading-snug cursor-pointer">
-                <strong>Age Confirmation (DPDP Act India):</strong> I confirm that I am <strong>18 years of age or older</strong> to participate in college textbook and scrap paper transactions.
-              </label>
-            </div>
+            <form id="form-reg-scrap" onsubmit="handleScrapOwnerSignUp(event)" class="space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Owner Name *</label>
+                  <input type="text" required id="reg-scrap-owner" placeholder="e.g. Ramesh Kumar" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Business Name (Yard / Depot) *</label>
+                  <input type="text" required id="reg-scrap-name" placeholder="e.g. Karnataka Eco Recyclers" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+              </div>
 
-            <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-[11px] text-emerald-950 flex items-start gap-2">
-              <span class="text-base flex-shrink-0">💡</span>
-              <p>
-                <strong>Partner Registration Note:</strong> All members register with buyer/seller access. If you own a physical book stall or scrap recycling yard, you can apply for verification in 1 click from your dashboard after registration without creating a second account.
-              </p>
-            </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                  <input type="email" required id="reg-scrap-email" placeholder="recycler@example.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                  <input type="tel" required id="reg-scrap-phone" placeholder="+91 98765 43210" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+              </div>
 
-            <button 
-              type="submit" 
-              id="auth-signup-submit-btn" 
-              class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2 border border-emerald-700"
-            >
-              <span id="auth-signup-spinner" class="hidden animate-spin">🔄</span>
-              <span id="auth-signup-btn-text">Create Account & Send Verification Email</span>
-              <span>→</span>
-            </button>
-          </form>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Business / Yard Address *</label>
+                <input type="text" required id="reg-scrap-address" placeholder="Physical yard or depot street location" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
+                  <input type="text" required id="reg-scrap-state" value="Karnataka" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">District *</label>
+                  <input type="text" required id="reg-scrap-district" value="Dharwad" placeholder="e.g. Dharwad / Belagavi" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
+                  <input type="text" required id="reg-scrap-city" value="Hubli" placeholder="e.g. Hubli" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Location / Area *</label>
+                  <input type="text" required id="reg-scrap-location" placeholder="e.g. Keshwapur Industrial" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">KSPCB / Trade Licence (Optional)</label>
+                  <input type="text" id="reg-scrap-licence" placeholder="e.g. KSPCB/WPR/2026/09" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Account Password *</label>
+                  <input type="password" required minlength="8" id="reg-scrap-password" placeholder="Min 8 characters" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                </div>
+              </div>
+
+              <div class="bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 font-medium">
+                ⏳ <strong>Approval Notice:</strong> After submitting, your status will be set to <strong>PENDING</strong>. The Administrator will inspect your yard details before granting access to the Scrap Business Dashboard.
+              </div>
+
+              <button type="submit" id="btn-reg-scrap" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
+                <span>Submit Scrap Business Registration for Admin Review</span> →
+              </button>
+            </form>
+          </div>
 
           <div class="text-center pt-3 border-t border-slate-200 text-xs text-slate-600">
-            Already have an account? 
+            Already registered? 
             <button onclick="switchAuthTab('signin')" class="text-emerald-700 font-bold hover:underline">
-              Sign in here
+              Sign in to your account
             </button>
           </div>
         </div>
@@ -1784,9 +2001,9 @@
 
       <!-- Modal Bottom Security Footer -->
       <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 flex-shrink-0">
-        <span class="flex items-center gap-1">🔒 SECOND SHELF Cloud Security</span>
+        <span class="flex items-center gap-1">🔒 SECOND SHELF Security & RLS</span>
         <button onclick="closeModal('modal-auth')" class="text-slate-600 hover:text-slate-900 font-bold">
-          Close
+          Close Window
         </button>
       </div>
 
@@ -2118,7 +2335,106 @@
   </div>
 
   <!-- Load JavaScript Application Logic -->
-  <script src="supabase-config.js?v=1794165948831"></script>
-  <script src="app.js?v=1794165948831"></script>
+    <!-- ==================================================================== -->
+  <!-- MODAL: MANUAL LOCATION PICKER & AUTO-GEOLOCATION                     -->
+  <!-- ==================================================================== -->
+  <div id="modal-location-picker" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border border-slate-200 space-y-4 max-h-[92vh] flex flex-col">
+      <div class="flex items-center justify-between border-b pb-3 flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">📍</span>
+          <div>
+            <h3 class="font-extrabold text-base text-slate-900">Choose Your Location</h3>
+            <p class="text-[11px] text-slate-500">Discover nearby verified book stalls and doorstep scrap pickups</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-location-picker')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-3 overflow-y-auto pr-1 flex-1">
+        <!-- Auto Detect Button -->
+        <button 
+          type="button" 
+          onclick="requestBrowserLocation()" 
+          class="w-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-950 font-bold p-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
+        >
+          <span class="text-base">🎯</span>
+          <span>Detect My Location Automatically (GPS)</span>
+        </button>
+
+        <div class="flex items-center gap-2 my-2">
+          <div class="flex-1 border-t border-slate-200"></div>
+          <span class="text-[11px] text-slate-400 font-bold uppercase">Or Select Manually</span>
+          <div class="flex-1 border-t border-slate-200"></div>
+        </div>
+
+        <form id="form-location-picker" onsubmit="handleManualLocationSubmit(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">State *</label>
+            <select id="loc-state" onchange="handleLocationStateChange(this.value)" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium">
+              <option value="Karnataka" selected>Karnataka</option>
+              <option value="Maharashtra">Maharashtra</option>
+              <option value="Tamil Nadu">Tamil Nadu</option>
+              <option value="Telangana">Telangana</option>
+              <option value="Andhra Pradesh">Andhra Pradesh</option>
+              <option value="Kerala">Kerala</option>
+              <option value="Goa">Goa</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">District *</label>
+            <select id="loc-district" onchange="handleLocationDistrictChange(this.value)" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium">
+              <option value="Dharwad" selected>Dharwad / Hubli-Dharwad</option>
+              <option value="Bengaluru Urban">Bengaluru Urban</option>
+              <option value="Mysuru">Mysuru</option>
+              <option value="Belagavi">Belagavi</option>
+              <option value="Dakshina Kannada">Dakshina Kannada (Mangaluru)</option>
+              <option value="Kalaburagi">Kalaburagi</option>
+              <option value="Shivamogga">Shivamogga</option>
+              <option value="Tumakuru">Tumakuru</option>
+              <option value="Ballari">Ballari</option>
+              <option value="Vijayapura">Vijayapura</option>
+              <option value="Davanagere">Davanagere</option>
+              <option value="Udupi">Udupi</option>
+              <option value="Hassan">Hassan</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">City / Town *</label>
+            <input 
+              type="text" 
+              required 
+              id="loc-city" 
+              value="Hubli" 
+              placeholder="e.g. Hubli, Dharwad, Bengaluru, Mysuru" 
+              class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" 
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Locality / Landmark (Optional)</label>
+            <input 
+              type="text" 
+              id="loc-locality" 
+              placeholder="e.g. Vidyanagar, Keshwapur, Avenue Road, Chickpet" 
+              class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" 
+            />
+          </div>
+
+          <div class="flex justify-end gap-2 pt-3 border-t">
+            <button type="button" onclick="closeModal('modal-location-picker')" class="px-4 py-2 border rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+            <button type="submit" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-5 py-2 rounded-lg text-xs shadow transition">
+              Apply Location →
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+<script src="supabase-config.js?v=1794165948831"></script>
+  <script src="app.js?v=1794336518358"></script>
 </body>
 </html>

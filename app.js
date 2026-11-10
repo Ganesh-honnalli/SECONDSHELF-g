@@ -1,4 +1,707 @@
 
+// ====================================================================
+// 3-WAY REGISTRATION FLOW (NORMAL USER, BOOK STALL, SCRAP BUSINESS)
+// ====================================================================
+
+function switchRegType(type) {
+  const userBtn = document.getElementById('reg-type-user-btn');
+  const stallBtn = document.getElementById('reg-type-stall-btn');
+  const scrapBtn = document.getElementById('reg-type-scrap-btn');
+
+  const userContainer = document.getElementById('form-reg-user-container');
+  const stallContainer = document.getElementById('form-reg-stall-container');
+  const scrapContainer = document.getElementById('form-reg-scrap-container');
+
+  [userBtn, stallBtn, scrapBtn].forEach(b => {
+    b?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    b?.classList.add('text-slate-600');
+  });
+
+  userContainer?.classList.add('hidden');
+  stallContainer?.classList.add('hidden');
+  scrapContainer?.classList.add('hidden');
+
+  if (type === 'user') {
+    userBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    userBtn?.classList.remove('text-slate-600');
+    userContainer?.classList.remove('hidden');
+  } else if (type === 'stall') {
+    stallBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    stallBtn?.classList.remove('text-slate-600');
+    stallContainer?.classList.remove('hidden');
+  } else if (type === 'scrap') {
+    scrapBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    scrapBtn?.classList.remove('text-slate-600');
+    scrapContainer?.classList.remove('hidden');
+  }
+}
+
+// OPTION 1: Normal User Registration Handler
+async function handleNormalUserSignUp(event) {
+  if (event) event.preventDefault();
+  const name = document.getElementById('reg-user-name')?.value?.trim();
+  const email = document.getElementById('reg-user-email')?.value?.trim();
+  const phone = document.getElementById('reg-user-phone')?.value?.trim();
+  const password = document.getElementById('reg-user-password')?.value;
+  const confirm = document.getElementById('reg-user-confirm')?.value;
+  const ageConfirm = document.getElementById('reg-user-age')?.checked;
+
+  const errorBox = document.getElementById('signup-error-box');
+  const errorMsg = document.getElementById('signup-error-msg');
+  const successBox = document.getElementById('signup-success-box');
+  const successMsg = document.getElementById('signup-success-msg');
+  const submitBtn = document.getElementById('btn-reg-user');
+
+  if (errorBox) errorBox.classList.add('hidden');
+  if (successBox) successBox.classList.add('hidden');
+
+  if (!name || !email || !password || !phone) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Please fill out all required fields.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (password.length < 8) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Password must be at least 8 characters long.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (password !== confirm) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Passwords do not match.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (!ageConfirm) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'You must confirm that you are 18 years of age or older.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: name,
+          phone: phone,
+          role: 'seller'
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    if (data.user) {
+      try {
+        await supabase.from('profiles').upsert([{
+          id: data.user.id,
+          full_name: name,
+          phone: phone,
+          email: email,
+          age_confirmed: true,
+          is_verified: true
+        }]);
+        await supabase.from('user_roles').upsert([{
+          user_id: data.user.id,
+          role: 'seller',
+          is_approved: true
+        }]);
+      } catch (e) {}
+    }
+
+    if (successBox && successMsg) {
+      successMsg.textContent = 'Normal User Account created! Verification email dispatched to ' + email + '. You can now sign in.';
+      successBox.classList.remove('hidden');
+    }
+    showToast('Registration successful! Please sign in.', 'success');
+
+    setTimeout(() => {
+      switchAuthTab('signin');
+      const emailInput = document.getElementById('auth-signin-email');
+      if (emailInput) emailInput.value = email;
+      if (submitBtn) submitBtn.disabled = false;
+    }, 1500);
+
+  } catch (err) {
+    if (submitBtn) submitBtn.disabled = false;
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = err.message || 'Error creating account.';
+      errorBox.classList.remove('hidden');
+    }
+  }
+}
+
+// OPTION 2: Book Stall Owner Registration Handler
+async function handleBookStallSignUp(event) {
+  if (event) event.preventDefault();
+  const ownerName = document.getElementById('reg-stall-owner')?.value?.trim();
+  const stallName = document.getElementById('reg-stall-name')?.value?.trim();
+  const email = document.getElementById('reg-stall-email')?.value?.trim();
+  const phone = document.getElementById('reg-stall-phone')?.value?.trim();
+  const address = document.getElementById('reg-stall-address')?.value?.trim();
+  const stateVal = document.getElementById('reg-stall-state')?.value?.trim() || 'Karnataka';
+  const district = document.getElementById('reg-stall-district')?.value?.trim() || 'Dharwad';
+  const city = document.getElementById('reg-stall-city')?.value?.trim() || 'Hubli';
+  const location = document.getElementById('reg-stall-location')?.value?.trim() || 'Vidyanagar';
+  const licence = document.getElementById('reg-stall-licence')?.value?.trim() || 'Pending';
+  const password = document.getElementById('reg-stall-password')?.value;
+
+  const errorBox = document.getElementById('signup-error-box');
+  const errorMsg = document.getElementById('signup-error-msg');
+  const successBox = document.getElementById('signup-success-box');
+  const successMsg = document.getElementById('signup-success-msg');
+  const submitBtn = document.getElementById('btn-reg-stall');
+
+  if (errorBox) errorBox.classList.add('hidden');
+  if (successBox) successBox.classList.add('hidden');
+
+  if (!ownerName || !stallName || !email || !phone || !address || !city || !password) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Please fill out all mandatory fields for bookstore registration.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: ownerName,
+          phone: phone,
+          role: 'seller' // Default role remains seller until approved!
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    const formattedAddress = `${address} | Locality: ${location} | City: ${city} | District: ${district} | State: ${stateVal}`;
+
+    if (data.user) {
+      // Create Profile
+      try {
+        await supabase.from('profiles').upsert([{
+          id: data.user.id,
+          full_name: ownerName,
+          phone: phone,
+          email: email,
+          age_confirmed: true,
+          is_verified: true
+        }]);
+        await supabase.from('user_roles').upsert([{
+          user_id: data.user.id,
+          role: 'seller',
+          is_approved: false
+        }]);
+      } catch (e) {}
+
+      // Create Book Stall Application with PENDING status
+      try {
+        await supabase.from('book_stalls').insert([{
+          user_id: data.user.id,
+          stall_name: stallName,
+          owner_name: ownerName,
+          phone: phone,
+          licence_number: licence,
+          address: formattedAddress,
+          pincode: '580020',
+          approval_status: 'pending'
+        }]);
+      } catch (e) {
+        console.warn('Stall insert fallback:', e);
+      }
+
+      // Notify Admin
+      try {
+        await supabase.from('admin_audit_logs').insert([{
+          action: 'partner_application',
+          target_type: 'book_stall',
+          target_id: data.user.id,
+          details: {
+            applicant_name: ownerName,
+            email: email,
+            phone: phone,
+            business_name: stallName,
+            business_type: 'Book Stall',
+            state: stateVal,
+            district: district,
+            city: city,
+            location: location,
+            status: 'pending'
+          }
+        }]);
+      } catch (e) {}
+    }
+
+    if (successBox && successMsg) {
+      successMsg.innerHTML = '<strong>Application Submitted!</strong> Your Book Stall registration is submitted. Waiting for Admin approval. You will receive an alert once verified.';
+      successBox.classList.remove('hidden');
+    }
+
+    showToast('Your Book Stall registration is submitted. Waiting for Admin approval.', 'info');
+
+    setTimeout(() => {
+      switchAuthTab('signin');
+      const emailInput = document.getElementById('auth-signin-email');
+      if (emailInput) emailInput.value = email;
+      if (submitBtn) submitBtn.disabled = false;
+    }, 2500);
+
+  } catch (err) {
+    if (submitBtn) submitBtn.disabled = false;
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = err.message || 'Error submitting book stall registration.';
+      errorBox.classList.remove('hidden');
+    }
+  }
+}
+
+// OPTION 3: Recycle & Scrap Business Owner Registration Handler
+async function handleScrapOwnerSignUp(event) {
+  if (event) event.preventDefault();
+  const ownerName = document.getElementById('reg-scrap-owner')?.value?.trim();
+  const bizName = document.getElementById('reg-scrap-name')?.value?.trim();
+  const email = document.getElementById('reg-scrap-email')?.value?.trim();
+  const phone = document.getElementById('reg-scrap-phone')?.value?.trim();
+  const address = document.getElementById('reg-scrap-address')?.value?.trim();
+  const stateVal = document.getElementById('reg-scrap-state')?.value?.trim() || 'Karnataka';
+  const district = document.getElementById('reg-scrap-district')?.value?.trim() || 'Dharwad';
+  const city = document.getElementById('reg-scrap-city')?.value?.trim() || 'Hubli';
+  const location = document.getElementById('reg-scrap-location')?.value?.trim() || 'Keshwapur';
+  const licence = document.getElementById('reg-scrap-licence')?.value?.trim() || 'Pending';
+  const password = document.getElementById('reg-scrap-password')?.value;
+
+  const errorBox = document.getElementById('signup-error-box');
+  const errorMsg = document.getElementById('signup-error-msg');
+  const successBox = document.getElementById('signup-success-box');
+  const successMsg = document.getElementById('signup-success-msg');
+  const submitBtn = document.getElementById('btn-reg-scrap');
+
+  if (errorBox) errorBox.classList.add('hidden');
+  if (successBox) successBox.classList.add('hidden');
+
+  if (!ownerName || !bizName || !email || !phone || !address || !city || !password) {
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = 'Please fill out all mandatory fields for scrap depot registration.';
+      errorBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: ownerName,
+          phone: phone,
+          role: 'seller' // Default role remains seller until approved!
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    const formattedAddress = `${address} | Locality: ${location} | City: ${city} | District: ${district} | State: ${stateVal}`;
+
+    if (data.user) {
+      try {
+        await supabase.from('profiles').upsert([{
+          id: data.user.id,
+          full_name: ownerName,
+          phone: phone,
+          email: email,
+          age_confirmed: true,
+          is_verified: true
+        }]);
+        await supabase.from('user_roles').upsert([{
+          user_id: data.user.id,
+          role: 'seller',
+          is_approved: false
+        }]);
+      } catch (e) {}
+
+      // Create Scrap Owner Application with PENDING status
+      try {
+        await supabase.from('scrap_owners').insert([{
+          user_id: data.user.id,
+          business_name: bizName,
+          owner_name: ownerName,
+          phone: phone,
+          licence_number: licence,
+          address: formattedAddress,
+          base_area: location || city,
+          pincode: '580020',
+          approval_status: 'pending'
+        }]);
+      } catch (e) {
+        console.warn('Scrap insert fallback:', e);
+      }
+
+      // Notify Admin
+      try {
+        await supabase.from('admin_audit_logs').insert([{
+          action: 'partner_application',
+          target_type: 'scrap_owner',
+          target_id: data.user.id,
+          details: {
+            applicant_name: ownerName,
+            email: email,
+            phone: phone,
+            business_name: bizName,
+            business_type: 'Recycle & Scrap',
+            state: stateVal,
+            district: district,
+            city: city,
+            location: location,
+            status: 'pending'
+          }
+        }]);
+      } catch (e) {}
+    }
+
+    if (successBox && successMsg) {
+      successMsg.innerHTML = '<strong>Application Submitted!</strong> Your Scrap Business registration is submitted. Waiting for Admin approval. You will be notified once activated.';
+      successBox.classList.remove('hidden');
+    }
+
+    showToast('Your Scrap Business registration is submitted. Waiting for Admin approval.', 'info');
+
+    setTimeout(() => {
+      switchAuthTab('signin');
+      const emailInput = document.getElementById('auth-signin-email');
+      if (emailInput) emailInput.value = email;
+      if (submitBtn) submitBtn.disabled = false;
+    }, 2500);
+
+  } catch (err) {
+    if (submitBtn) submitBtn.disabled = false;
+    if (errorBox && errorMsg) {
+      errorMsg.textContent = err.message || 'Error submitting scrap business registration.';
+      errorBox.classList.remove('hidden');
+    }
+  }
+}
+
+
+// ====================================================================
+// LOCATION DETECTION, REVERSE GEOCODING & HEADER DISPLAY
+// ====================================================================
+
+// Default and active location state
+state.currentLocation = {
+  city: 'Hubli',
+  district: 'Dharwad',
+  state: 'Karnataka',
+  area: 'Vidyanagar'
+};
+
+// Known Karnataka city coordinate hubs for accurate nearest-city calculation
+const KARNATAKA_HUBS = [
+  { city: 'Hubli', district: 'Dharwad', state: 'Karnataka', lat: 15.3647, lon: 75.1240 },
+  { city: 'Dharwad', district: 'Dharwad', state: 'Karnataka', lat: 15.4589, lon: 75.0078 },
+  { city: 'Bengaluru', district: 'Bengaluru Urban', state: 'Karnataka', lat: 12.9716, lon: 77.5946 },
+  { city: 'Mysuru', district: 'Mysuru', state: 'Karnataka', lat: 12.2958, lon: 76.6394 },
+  { city: 'Mangaluru', district: 'Dakshina Kannada', state: 'Karnataka', lat: 12.9141, lon: 74.8560 },
+  { city: 'Belagavi', district: 'Belagavi', state: 'Karnataka', lat: 15.8497, lon: 74.4977 },
+  { city: 'Kalaburagi', district: 'Kalaburagi', state: 'Karnataka', lat: 17.3297, lon: 76.8343 },
+  { city: 'Shivamogga', district: 'Shivamogga', state: 'Karnataka', lat: 13.9299, lon: 75.5681 },
+  { city: 'Tumakuru', district: 'Tumakuru', state: 'Karnataka', lat: 13.3392, lon: 77.1015 },
+  { city: 'Davanagere', district: 'Davanagere', state: 'Karnataka', lat: 14.4644, lon: 75.9218 },
+  { city: 'Ballari', district: 'Ballari', state: 'Karnataka', lat: 15.1394, lon: 76.9214 },
+  { city: 'Vijayapura', district: 'Vijayapura', state: 'Karnataka', lat: 16.8302, lon: 75.7100 },
+  { city: 'Udupi', district: 'Udupi', state: 'Karnataka', lat: 13.3409, lon: 74.7421 }
+];
+
+function initLocation() {
+  const saved = localStorage.getItem('SECOND_SHELF_LOCATION');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.city && parsed.state) {
+        state.currentLocation = parsed;
+        updateHeaderLocationUI();
+        return;
+      }
+    } catch (e) {}
+  }
+
+  // If first visit, display consent banner
+  const dismissed = localStorage.getItem('SECOND_SHELF_LOCATION_DISMISSED');
+  if (!dismissed) {
+    document.getElementById('location-consent-banner')?.classList.remove('hidden');
+  }
+  updateHeaderLocationUI();
+}
+
+function updateHeaderLocationUI() {
+  const loc = state.currentLocation;
+  const textEl = document.getElementById('header-location-text');
+  if (textEl) {
+    textEl.textContent = `${loc.city}, ${loc.state}`;
+  }
+  const navText = document.getElementById('nav-location-text');
+  if (navText) {
+    navText.textContent = `${loc.city}, ${loc.state}`;
+  }
+  const stallsLocLabel = document.getElementById('nearby-stalls-loc-label');
+  if (stallsLocLabel) {
+    stallsLocLabel.textContent = `${loc.city}, ${loc.state}`;
+  }
+  const scrapsLocLabel = document.getElementById('nearby-scrap-loc-label');
+  if (scrapsLocLabel) {
+    scrapsLocLabel.textContent = `${loc.city}, ${loc.state}`;
+  }
+}
+
+function dismissLocationBanner() {
+  document.getElementById('location-consent-banner')?.classList.add('hidden');
+  localStorage.setItem('SECOND_SHELF_LOCATION_DISMISSED', 'true');
+}
+
+function openLocationModal() {
+  dismissLocationBanner();
+  const loc = state.currentLocation;
+  const stateInput = document.getElementById('loc-state');
+  const distInput = document.getElementById('loc-district');
+  const cityInput = document.getElementById('loc-city');
+  const areaInput = document.getElementById('loc-locality');
+
+  if (stateInput) stateInput.value = loc.state || 'Karnataka';
+  if (distInput) distInput.value = loc.district || 'Dharwad';
+  if (cityInput) cityInput.value = loc.city || 'Hubli';
+  if (areaInput) areaInput.value = loc.area || '';
+
+  document.getElementById('modal-location-picker')?.classList.remove('hidden');
+}
+
+function handleLocationDistrictChange(district) {
+  const cityInput = document.getElementById('loc-city');
+  if (!cityInput) return;
+  const map = {
+    'Dharwad': 'Hubli',
+    'Bengaluru Urban': 'Bengaluru',
+    'Mysuru': 'Mysuru',
+    'Belagavi': 'Belagavi',
+    'Dakshina Kannada': 'Mangaluru',
+    'Kalaburagi': 'Kalaburagi',
+    'Shivamogga': 'Shivamogga',
+    'Tumakuru': 'Tumakuru',
+    'Ballari': 'Ballari',
+    'Vijayapura': 'Vijayapura',
+    'Davanagere': 'Davanagere',
+    'Udupi': 'Udupi',
+    'Hassan': 'Hassan'
+  };
+  if (map[district]) {
+    cityInput.value = map[district];
+  }
+}
+
+function handleLocationStateChange(stateVal) {
+  // Can be extended for other states if needed
+}
+
+function handleManualLocationSubmit(event) {
+  if (event) event.preventDefault();
+  const stateVal = document.getElementById('loc-state')?.value || 'Karnataka';
+  const district = document.getElementById('loc-district')?.value || 'Dharwad';
+  const city = document.getElementById('loc-city')?.value?.trim() || 'Hubli';
+  const area = document.getElementById('loc-locality')?.value?.trim() || '';
+
+  state.currentLocation = {
+    city,
+    district,
+    state: stateVal,
+    area
+  };
+
+  localStorage.setItem('SECOND_SHELF_LOCATION', JSON.stringify(state.currentLocation));
+  updateHeaderLocationUI();
+  closeModal('modal-location-picker');
+  showToast(`Location updated to ${city}, ${stateVal}`, 'success');
+
+  // If user is logged in, sync to profile
+  if (state.currentUser && supabase) {
+    supabase.from('profiles').update({
+      city,
+      district,
+      state: stateVal,
+      location: area
+    }).eq('id', state.currentUser.id).then(() => {});
+  }
+
+  // Refresh directories to prioritize local businesses
+  renderBookDirectory();
+  renderRaddiDirectory();
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function findNearestKarnatakaCity(lat, lon) {
+  let nearest = KARNATAKA_HUBS[0];
+  let minDistance = calculateDistance(lat, lon, nearest.lat, nearest.lon);
+
+  for (let i = 1; i < KARNATAKA_HUBS.length; i++) {
+    const hub = KARNATAKA_HUBS[i];
+    const dist = calculateDistance(lat, lon, hub.lat, hub.lon);
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearest = hub;
+    }
+  }
+  return nearest;
+}
+
+async function requestBrowserLocation() {
+  dismissLocationBanner();
+  if (!navigator.geolocation) {
+    showToast('Geolocation is not supported by your browser. Please select location manually.', 'info');
+    openLocationModal();
+    return;
+  }
+
+  showToast('Detecting location via browser GPS...', 'info');
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      let detectedCity = '';
+      let detectedDistrict = '';
+      let detectedState = 'Karnataka';
+
+      try {
+        // Free client-side reverse geocoding API
+        const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+        if (res.ok) {
+          const data = await res.json();
+          detectedCity = data.city || data.locality || '';
+          detectedState = data.principalSubdivision || 'Karnataka';
+          if (data.localityInfo && data.localityInfo.administrative) {
+            const adminLevels = data.localityInfo.administrative;
+            const distObj = adminLevels.find(a => a.name && (a.name.includes('District') || a.order === 4));
+            if (distObj) detectedDistrict = distObj.name.replace('District', '').trim();
+          }
+        }
+      } catch (err) {
+        console.warn('Reverse geocoding network fallback:', err);
+      }
+
+      // If network API returned empty city or non-Karnataka, check coordinate distance
+      if (!detectedCity) {
+        const nearest = findNearestKarnatakaCity(lat, lon);
+        detectedCity = nearest.city;
+        detectedDistrict = nearest.district;
+        detectedState = nearest.state;
+      }
+
+      state.currentLocation = {
+        city: detectedCity,
+        district: detectedDistrict || 'Dharwad',
+        state: detectedState,
+        area: ''
+      };
+
+      localStorage.setItem('SECOND_SHELF_LOCATION', JSON.stringify(state.currentLocation));
+      updateHeaderLocationUI();
+      closeModal('modal-location-picker');
+      showToast(`📍 Location set to ${detectedCity}, ${detectedState}`, 'success');
+
+      if (state.currentUser && supabase) {
+        supabase.from('profiles').update({
+          city: detectedCity,
+          district: detectedDistrict || 'Dharwad',
+          state: detectedState
+        }).eq('id', state.currentUser.id).then(() => {});
+      }
+
+      renderBookDirectory();
+      renderRaddiDirectory();
+    },
+    (error) => {
+      console.warn('Geolocation error:', error);
+      showToast('Location permission denied or unavailable. Please select your city manually.', 'info');
+      openLocationModal();
+    },
+    { timeout: 8000, maximumAge: 600000 }
+  );
+}
+
+// Location parser helper for stalls and scrap owners
+function getBusinessLocation(b) {
+  let city = b.city;
+  let district = b.district;
+  let stateVal = b.state || 'Karnataka';
+  let location = b.location || b.base_area || '';
+  const address = b.address || '';
+
+  if (!city && address) {
+    const cityMatch = address.match(/City:s*([^|]+)/i);
+    const distMatch = address.match(/District:s*([^|]+)/i);
+    const stateMatch = address.match(/State:s*([^|]+)/i);
+    const locMatch = address.match(/Locality:s*([^|]+)/i);
+
+    if (cityMatch) city = cityMatch[1].trim();
+    if (distMatch) district = distMatch[1].trim();
+    if (stateMatch) stateVal = stateMatch[1].trim();
+    if (locMatch) location = locMatch[1].trim();
+
+    if (!city) {
+      const parts = address.split(',').map(p => p.trim());
+      if (parts.length >= 3) {
+        city = parts[parts.length - 2];
+        district = parts[parts.length - 1];
+      }
+    }
+  }
+
+  return {
+    city: city || 'Hubli',
+    district: district || 'Dharwad',
+    state: stateVal,
+    location: location || b.base_area || b.pincode || 'Downtown',
+    fullAddress: address
+  };
+}
+
+
+// ====================================================================
+// PERMANENT MASTER ADMINISTRATOR CONFIGURATION
+// ====================================================================
+const MASTER_ADMIN_EMAIL = 'ganeshhonnalli07@gmail.com';
+
+
 // Regional Sales Analytics Filter State
 let analyticsFilters = {
   region: 'all',
@@ -1091,6 +1794,18 @@ function setupRealtimeSubscriptions() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_records' }, () => {
       refreshRequestsAndOffers();
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'book_stalls' }, payload => {
+      refreshRequestsAndOffers();
+      if (payload.eventType === 'INSERT' && state.currentUser?.email === MASTER_ADMIN_EMAIL) {
+        showToast('🚨 New Book Stall Application Submitted! Check Pending Approvals.', 'info');
+      }
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'scrap_owners' }, payload => {
+      refreshRequestsAndOffers();
+      if (payload.eventType === 'INSERT' && state.currentUser?.email === MASTER_ADMIN_EMAIL) {
+        showToast('🚨 New Scrap Business Application Submitted! Check Pending Approvals.', 'info');
+      }
+    })
     .subscribe();
 }
 
@@ -1116,7 +1831,20 @@ async function resolveUserProfile(user) {
       .select('*')
       .eq('user_id', user.id);
 
-    const primaryRole = roles && roles.length > 0 ? roles[0].role : (user.user_metadata?.role || 'seller');
+    let primaryRole = 'seller';
+
+    // Strict single master admin verification
+    if (user.email === MASTER_ADMIN_EMAIL) {
+      primaryRole = 'admin';
+    } else {
+      // Find if user has an approved business role
+      const approvedRole = (roles || []).find(r => r.is_approved === true && (r.role === 'book_stall' || r.role === 'raddi_owner'));
+      if (approvedRole) {
+        primaryRole = approvedRole.role;
+      } else {
+        primaryRole = 'seller'; // Unapproved partners remain normal users
+      }
+    }
 
     state.currentUser = {
       id: user.id,
@@ -1338,7 +2066,7 @@ async function handleCreatorAdminLogin(event) {
   const emailInput = document.getElementById('creator-email')?.value?.trim();
   const password = document.getElementById('creator-password')?.value;
 
-  const email = emailInput === 'admin' ? 'admin@secondshelf.in' : emailInput;
+  const email = emailInput === 'admin' ? 'ganeshhonnalli07@gmail.com' : emailInput;
 
   if (!email || !password) {
     showToast('Please enter administrator credentials.', 'error');
@@ -3575,64 +4303,178 @@ function setAdminTab(tab) {
     `;
   }
 
-  // TAB 3: PARTNER APPROVALS
+  // TAB 3: PENDING BUSINESS APPROVALS (Requirement 5)
   else if (tab === 'approvals') {
+    const pendingStalls = (state.bookStalls || []).filter(s => (s.approval_status || '').toLowerCase() === 'pending').map(s => ({
+      ...s,
+      bizType: 'Book Stall',
+      bizName: s.stall_name,
+      applicantType: 'stall',
+      locationInfo: getBusinessLocation(s),
+      userEmail: (state.profiles || []).find(p => p.id === s.user_id)?.email || s.phone || 'applicant@secondshelf.in'
+    }));
+
+    const pendingScraps = (state.scrapOwners || []).filter(r => (r.approval_status || '').toLowerCase() === 'pending').map(r => ({
+      ...r,
+      bizType: 'Recycle & Scrap',
+      bizName: r.business_name,
+      applicantType: 'raddi',
+      locationInfo: getBusinessLocation(r),
+      userEmail: (state.profiles || []).find(p => p.id === r.user_id)?.email || r.phone || 'applicant@secondshelf.in'
+    }));
+
+    const allPending = [...pendingStalls, ...pendingScraps];
+    const approvedStalls = (state.bookStalls || []).filter(s => (s.approval_status || '').toLowerCase() === 'approved');
+    const approvedScraps = (state.scrapOwners || []).filter(r => (r.approval_status || '').toLowerCase() === 'approved');
+
     container.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <div class="border-b pb-3">
-          <h3 class="font-extrabold text-base text-slate-900">Partner Registration Requests</h3>
-          <p class="text-xs text-slate-500">Book stalls and scrap recyclers must be verified by the administrator before participating in marketplace deals.</p>
+      <div class="space-y-6">
+        <!-- Section: Pending Business Approvals (Exact Requirement 5) -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xl">📋</span>
+                <h3 class="font-extrabold text-base text-slate-900">Pending Business Approvals</h3>
+                <span class="bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black px-2.5 py-0.5 rounded-full">
+                  ${allPending.length} Pending
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">
+                New Book Stall & Scrap Business registrations waiting for Administrator verification before accessing business dashboards.
+              </p>
+            </div>
+            <button onclick="refreshRequestsAndOffers().then(() => setAdminTab('approvals'))" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs border border-slate-300 transition flex items-center gap-1 self-start sm:self-auto">
+              <span>🔄</span> Refresh Approvals
+            </button>
+          </div>
+
+          ${allPending.length === 0 ? `
+            <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs space-y-1">
+              <span class="text-3xl block mb-2">✅</span>
+              <strong class="text-slate-700">No Pending Business Approvals</strong>
+              <p>All book stalls and scrap businesses have been reviewed. New applications will appear here automatically via Supabase Realtime.</p>
+            </div>
+          ` : `
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+                <thead class="bg-slate-100 text-slate-700 font-bold border-b">
+                  <tr>
+                    <th class="p-3">Applicant Name</th>
+                    <th class="p-3">Email</th>
+                    <th class="p-3">Phone Number</th>
+                    <th class="p-3">Business Name</th>
+                    <th class="p-3">Business Type</th>
+                    <th class="p-3">State</th>
+                    <th class="p-3">District</th>
+                    <th class="p-3">City</th>
+                    <th class="p-3">Submitted Date</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium">
+                  ${allPending.map(item => `
+                    <tr class="hover:bg-slate-50 transition">
+                      <td class="p-3 font-bold text-slate-900">${item.owner_name || 'N/A'}</td>
+                      <td class="p-3 text-slate-600 font-mono text-[11px]">${item.userEmail}</td>
+                      <td class="p-3 text-slate-700 font-bold">${item.phone || 'N/A'}</td>
+                      <td class="p-3 font-extrabold text-slate-900">
+                        <span class="mr-1">${item.applicantType === 'stall' ? '🏬' : '♻️'}</span>
+                        ${item.bizName}
+                      </td>
+                      <td class="p-3">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-bold ${item.applicantType === 'stall' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
+                          ${item.bizType}
+                        </span>
+                      </td>
+                      <td class="p-3 text-slate-700">${item.locationInfo.state}</td>
+                      <td class="p-3 text-slate-700">${item.locationInfo.district}</td>
+                      <td class="p-3 text-slate-900 font-semibold">${item.locationInfo.city}</td>
+                      <td class="p-3 text-slate-500 font-mono text-[11px]">
+                        ${item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Today'}
+                      </td>
+                      <td class="p-3">
+                        <span class="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold text-[10px] uppercase border border-amber-300">
+                          PENDING
+                        </span>
+                      </td>
+                      <td class="p-3 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                          <button 
+                            onclick="approveBusiness('${item.applicantType}', '${item.id}')" 
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-sm hover:shadow transition"
+                            title="Approve registration and activate business role"
+                          >
+                            APPROVE
+                          </button>
+                          <button 
+                            onclick="rejectBusiness('${item.applicantType}', '${item.id}')" 
+                            class="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-sm hover:shadow transition"
+                            title="Reject application and keep dashboard access disabled"
+                          >
+                            REJECT
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
         </div>
 
-        <div class="space-y-3">
-          ${state.bookStalls.length === 0 && state.scrapOwners.length === 0 ? `
-            <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
-              <span class="text-3xl block mb-2">✅</span>
-              No partner applications pending review.
-            </div>
-          ` : ''}
+        <!-- Section 2: Approved Businesses Network -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <div class="border-b pb-3">
+            <h3 class="font-extrabold text-base text-slate-900">Approved Partner Network (${approvedStalls.length + approvedScraps.length})</h3>
+            <p class="text-xs text-slate-500">Currently active book stalls and scrap recyclers serving students and households.</p>
+          </div>
 
-          ${state.bookStalls.map(s => `
-            <div class="border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-lg">🏬</span>
-                  <strong class="text-xs text-slate-900 font-extrabold">${s.stall_name}</strong>
-                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${s.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${(s.approval_status || 'approved').toUpperCase()}</span>
-                </div>
-                <div class="text-[11px] text-slate-600 mt-1">Licence: ${s.licence_number} • Phone: ${s.phone || 'Verified'} • PIN: ${s.pincode} • ${s.address}</div>
-              </div>
-              <div class="flex items-center gap-2">
-                ${s.approval_status !== 'approved' ? `
-                  <button onclick="approveBusiness('stall', '${s.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Approve ✅</button>
-                  <button onclick="rejectBusiness('stall', '${s.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Reject ❌</button>
-                ` : `
-                  <button onclick="suspendBusiness('stall', '${s.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
-                `}
-              </div>
-            </div>
-          `).join('')}
+          ${approvedStalls.length === 0 && approvedScraps.length === 0 ? `
+            <div class="p-6 text-center text-slate-400 text-xs">No active approved businesses yet. Approve pending applications above to activate.</div>
+          ` : `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${approvedStalls.map(s => {
+                const loc = getBusinessLocation(s);
+                return `
+                  <div class="border border-emerald-200 bg-emerald-50/40 rounded-xl p-3.5 flex items-center justify-between gap-3">
+                    <div>
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-base">🏬</span>
+                        <strong class="text-xs text-slate-900 font-extrabold">${s.stall_name}</strong>
+                        <span class="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded">APPROVED</span>
+                      </div>
+                      <div class="text-[11px] text-slate-600 mt-1">Owner: ${s.owner_name} • 📍 ${loc.city}, ${loc.district} • ${s.phone || 'Phone Verified'}</div>
+                    </div>
+                    <button onclick="suspendBusiness('stall', '${s.id}')" class="text-[11px] text-rose-700 hover:bg-rose-100 px-2 py-1 rounded font-bold border border-rose-300 transition">
+                      Suspend
+                    </button>
+                  </div>
+                `;
+              }).join('')}
 
-          ${state.scrapOwners.map(r => `
-            <div class="border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-lg">♻️</span>
-                  <strong class="text-xs text-slate-900 font-extrabold">${r.business_name}</strong>
-                  <span class="text-[10px] px-2 py-0.5 rounded font-bold ${r.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${(r.approval_status || 'approved').toUpperCase()}</span>
-                </div>
-                <div class="text-[11px] text-slate-600 mt-1">Licence: ${r.licence_number} • Phone: ${r.phone || 'Verified'} • PIN: ${r.pincode} • ${r.address}</div>
-              </div>
-              <div class="flex items-center gap-2">
-                ${r.approval_status !== 'approved' ? `
-                  <button onclick="approveBusiness('raddi', '${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Approve ✅</button>
-                  <button onclick="rejectBusiness('raddi', '${r.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow">Reject ❌</button>
-                ` : `
-                  <button onclick="suspendBusiness('raddi', '${r.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2.5 py-1 rounded text-xs">Suspend Access</button>
-                `}
-              </div>
+              ${approvedScraps.map(r => {
+                const loc = getBusinessLocation(r);
+                return `
+                  <div class="border border-emerald-200 bg-emerald-50/40 rounded-xl p-3.5 flex items-center justify-between gap-3">
+                    <div>
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-base">♻️</span>
+                        <strong class="text-xs text-slate-900 font-extrabold">${r.business_name}</strong>
+                        <span class="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded">APPROVED</span>
+                      </div>
+                      <div class="text-[11px] text-slate-600 mt-1">Owner: ${r.owner_name} • 📍 ${loc.city}, ${loc.district} • Min 10 kg verified</div>
+                    </div>
+                    <button onclick="suspendBusiness('raddi', '${r.id}')" class="text-[11px] text-rose-700 hover:bg-rose-100 px-2 py-1 rounded font-bold border border-rose-300 transition">
+                      Suspend
+                    </button>
+                  </div>
+                `;
+              }).join('')}
             </div>
-          `).join('')}
+          `}
         </div>
       </div>
     `;
@@ -3860,10 +4702,36 @@ async function approveBusiness(type, id) {
 
 async function rejectBusiness(type, id) {
   if (supabase) {
-    if (type === 'stall') {
-      await supabase.from('book_stalls').update({ approval_status: 'rejected' }).eq('id', id);
-    } else {
-      await supabase.from('scrap_owners').update({ approval_status: 'rejected' }).eq('id', id);
+    try {
+      if (type === 'stall') {
+        await supabase.from('book_stalls').update({ approval_status: 'rejected' }).eq('id', id);
+        const stall = state.bookStalls.find(s => s.id === id);
+        if (stall) {
+          stall.approval_status = 'rejected';
+          await supabase.from('user_roles').update({ is_approved: false, role: 'seller' }).eq('user_id', stall.user_id);
+          await supabase.from('notifications').insert({
+            user_id: stall.user_id,
+            title: 'Book Stall Application Update',
+            message: 'Your Book Stall application was reviewed and rejected by Administrator.',
+            notification_type: 'account_rejected'
+          });
+        }
+      } else {
+        await supabase.from('scrap_owners').update({ approval_status: 'rejected' }).eq('id', id);
+        const scrap = state.scrapOwners.find(s => s.id === id);
+        if (scrap) {
+          scrap.approval_status = 'rejected';
+          await supabase.from('user_roles').update({ is_approved: false, role: 'seller' }).eq('user_id', scrap.user_id);
+          await supabase.from('notifications').insert({
+            user_id: scrap.user_id,
+            title: 'Scrap Business Application Update',
+            message: 'Your Scrap Business application was reviewed and rejected by Administrator.',
+            notification_type: 'account_rejected'
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Error during partner rejection:', e);
     }
   }
   showToast('Partner registration rejected.', 'info');
@@ -4095,12 +4963,13 @@ function openLoginPortal(role = 'seller') {
   const passwordInput = document.getElementById('auth-signin-password');
 
   if (role === 'admin') {
-    if (emailInput) emailInput.value = 'admin@secondshelf.in';
+    if (emailInput) emailInput.value = 'ganeshhonnalli07@gmail.com';
     if (passwordInput) {
-      passwordInput.value = 'AdminSecure@2026';
+      passwordInput.value = '';
+      passwordInput.placeholder = 'Enter Admin Password';
       passwordInput.focus();
     }
-    showToast('Admin Credentials Pre-filled: Click Sign In to enter Admin Console', 'info');
+    showToast('Administrator Sign In: Enter your secure admin password', 'info');
   } else if (role === 'book_stall') {
     if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. bookstore.owner@example.com';
     showToast('Book Stall Partner Sign In: Enter your bookstore login', 'info');
@@ -4210,21 +5079,93 @@ function runQuickRaddiCalc() {
 }
 
 function renderBookDirectory() {
+  // 1. Certified Book Stalls (Prioritized by location)
+  const stallsContainer = document.getElementById('available-book-stalls-cards');
+  const stallsLocLabel = document.getElementById('nearby-stalls-loc-label');
+  if (stallsLocLabel) {
+    stallsLocLabel.textContent = `${state.currentLocation.city}, ${state.currentLocation.state}`;
+  }
+
+  if (stallsContainer) {
+    const approvedStalls = (state.bookStalls || []).filter(s => (s.approval_status || '').toLowerCase() === 'approved');
+
+    if (approvedStalls.length === 0) {
+      stallsContainer.innerHTML = `
+        <div class="col-span-full py-6 text-center text-slate-500 bg-white rounded-xl border border-dashed border-slate-300 p-6">
+          <span class="text-2xl block mb-1">🏬</span>
+          <p class="text-xs font-bold text-slate-700">No approved book stalls available yet in ${state.currentLocation.city}.</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">Book stalls will appear here once verified by the administrator.</p>
+        </div>
+      `;
+    } else {
+      // Sort: Exact City match first, then District match, then others
+      const sortedStalls = [...approvedStalls].sort((a, b) => {
+        const locA = getBusinessLocation(a);
+        const locB = getBusinessLocation(b);
+        const aCityMatch = locA.city.toLowerCase() === state.currentLocation.city.toLowerCase() ? 2 : (locA.district.toLowerCase() === state.currentLocation.district.toLowerCase() ? 1 : 0);
+        const bCityMatch = locB.city.toLowerCase() === state.currentLocation.city.toLowerCase() ? 2 : (locB.district.toLowerCase() === state.currentLocation.district.toLowerCase() ? 1 : 0);
+        return bCityMatch - aCityMatch;
+      });
+
+      stallsContainer.innerHTML = sortedStalls.map(s => {
+        const loc = getBusinessLocation(s);
+        const isNearby = loc.city.toLowerCase() === state.currentLocation.city.toLowerCase();
+        const isDistrict = !isNearby && loc.district.toLowerCase() === state.currentLocation.district.toLowerCase();
+
+        return `
+          <div class="bg-white rounded-xl shadow-sm border ${isNearby ? 'border-emerald-400 ring-1 ring-emerald-300' : 'border-slate-200'} p-4 space-y-3 hover:shadow-md transition">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h4 class="font-extrabold text-sm text-slate-900">${s.stall_name}</h4>
+                <p class="text-xs text-slate-500">Proprietor: ${s.owner_name}</p>
+              </div>
+              ${isNearby ? `
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap border border-emerald-300">
+                  📍 Nearby in ${loc.city}
+                </span>
+              ` : isDistrict ? `
+                <span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                  📍 ${loc.district}
+                </span>
+              ` : `
+                <span class="bg-slate-100 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
+                  ${loc.city}
+                </span>
+              `}
+            </div>
+
+            <div class="text-xs space-y-1 text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+              <div>📍 <strong>Address:</strong> ${loc.location ? loc.location + ', ' : ''}${loc.city}, ${loc.district}</div>
+              <div>📞 <strong>Phone:</strong> ${s.phone || 'Verified on platform'}</div>
+              <div>📜 <strong>Licence:</strong> ${s.licence_number || 'Registered'}</div>
+              <div>🤝 <strong>Handover:</strong> Stall Counter Handover & Inspection</div>
+            </div>
+
+            <button onclick="openBookSubmissionModal()" class="w-full bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold py-1.5 rounded-lg text-xs shadow-sm transition">
+              Submit Books for this Stall →
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 2. Active Student Textbook Requests
   const container = document.getElementById('book-directory-cards');
   if (!container) return;
 
   const filterCat = document.getElementById('book-filter-cat')?.value || 'all';
   const filterCond = document.getElementById('book-filter-cond')?.value || 'all';
 
-  let list = state.bookRequests;
+  let list = state.bookRequests || [];
   if (filterCat !== 'all') list = list.filter(b => b.category === filterCat || b.category_id === filterCat);
   if (filterCond !== 'all') list = list.filter(b => (b.book_condition || b.condition) === filterCond);
 
   if (list.length === 0) {
     container.innerHTML = `
-      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border p-6">
+      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border border-dashed border-slate-300 p-6">
         <p class="text-sm font-semibold">No active book requests matching filters.</p>
-        <button onclick="openBookSubmissionModal()" class="mt-3 bg-shelf-gold text-slate-950 font-bold px-4 py-2 rounded text-xs">
+        <button onclick="openBookSubmissionModal()" class="mt-3 bg-shelf-gold text-slate-950 font-bold px-4 py-2 rounded text-xs shadow">
           Submit the First Book →
         </button>
       </div>
@@ -4261,16 +5202,87 @@ function renderBookDirectory() {
 }
 
 function renderRaddiDirectory() {
+  // 1. Approved Scrap & Recycle Depots (Prioritized by location)
+  const scrapsContainer = document.getElementById('approved-scrap-owners-cards');
+  const scrapsLocLabel = document.getElementById('nearby-scrap-loc-label');
+  if (scrapsLocLabel) {
+    scrapsLocLabel.textContent = `${state.currentLocation.city}, ${state.currentLocation.state}`;
+  }
+
+  if (scrapsContainer) {
+    const approvedScraps = (state.scrapOwners || []).filter(r => (r.approval_status || '').toLowerCase() === 'approved');
+
+    if (approvedScraps.length === 0) {
+      scrapsContainer.innerHTML = `
+        <div class="col-span-full py-6 text-center text-slate-500 bg-white rounded-xl border border-dashed border-slate-300 p-6">
+          <span class="text-2xl block mb-1">♻️</span>
+          <p class="text-xs font-bold text-slate-700">No approved scrap businesses available yet in ${state.currentLocation.city}.</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">Recycling dealers will appear here once verified by the administrator.</p>
+        </div>
+      `;
+    } else {
+      const sortedScraps = [...approvedScraps].sort((a, b) => {
+        const locA = getBusinessLocation(a);
+        const locB = getBusinessLocation(b);
+        const aCityMatch = locA.city.toLowerCase() === state.currentLocation.city.toLowerCase() ? 2 : (locA.district.toLowerCase() === state.currentLocation.district.toLowerCase() ? 1 : 0);
+        const bCityMatch = locB.city.toLowerCase() === state.currentLocation.city.toLowerCase() ? 2 : (locB.district.toLowerCase() === state.currentLocation.district.toLowerCase() ? 1 : 0);
+        return bCityMatch - aCityMatch;
+      });
+
+      scrapsContainer.innerHTML = sortedScraps.map(r => {
+        const loc = getBusinessLocation(r);
+        const isNearby = loc.city.toLowerCase() === state.currentLocation.city.toLowerCase();
+        const isDistrict = !isNearby && loc.district.toLowerCase() === state.currentLocation.district.toLowerCase();
+
+        return `
+          <div class="bg-white rounded-xl shadow-sm border ${isNearby ? 'border-emerald-400 ring-1 ring-emerald-300' : 'border-slate-200'} p-4 space-y-3 hover:shadow-md transition">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h4 class="font-extrabold text-sm text-slate-900">${r.business_name}</h4>
+                <p class="text-xs text-slate-500">Manager: ${r.owner_name}</p>
+              </div>
+              ${isNearby ? `
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap border border-emerald-300">
+                  📍 Nearby in ${loc.city}
+                </span>
+              ` : isDistrict ? `
+                <span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                  📍 ${loc.district}
+                </span>
+              ` : `
+                <span class="bg-slate-100 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
+                  ${loc.city}
+                </span>
+              `}
+            </div>
+
+            <div class="text-xs space-y-1 text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+              <div>📍 <strong>Base Yard:</strong> ${loc.location ? loc.location + ', ' : ''}${loc.city}, ${loc.district}</div>
+              <div>📞 <strong>Phone:</strong> ${r.phone || 'Verified on platform'}</div>
+              <div>⚖️ <strong>Minimum Pickup:</strong> <span class="text-rose-700 font-bold">10 kg</span> (Digital scale)</div>
+              <div>🚚 <strong>Service:</strong> Doorstep Collection & Instant Payment</div>
+            </div>
+
+            <button onclick="openRaddiSubmissionModal()" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-bold py-1.5 rounded-lg text-xs shadow-sm transition">
+              Request Doorstep Pickup (≥ 10 kg) →
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 2. Active Scrap Submissions
   const container = document.getElementById('raddi-directory-cards');
   if (!container) return;
 
-  const list = state.wasteRequests;
+  const list = state.wasteRequests || [];
 
   if (list.length === 0) {
     container.innerHTML = `
-      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border p-6">
+      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border border-dashed border-slate-300 p-6">
         <p class="text-sm font-semibold">No scrap pickup requests published yet.</p>
-        <button onclick="openRaddiSubmissionModal()" class="mt-3 bg-shelf-forest text-white font-bold px-4 py-2 rounded text-xs">
+        <button onclick="openRaddiSubmissionModal()" class="mt-3 bg-shelf-forest text-white font-bold px-4 py-2 rounded text-xs shadow">
           Request Scrap Pickup (≥ 10 kg) →
         </button>
       </div>
@@ -4417,6 +5429,7 @@ function openPolicyModal(type) {
 // ====================================================================
 async function initApp() {
   try {
+    initLocation();
     runQuickBookCalc();
     runQuickRaddiCalc();
     await initSupabase();
