@@ -1,92 +1,358 @@
 
 // ====================================================================
-// 3-WAY REGISTRATION FLOW (NORMAL USER, BOOK STALL, SCRAP BUSINESS)
+// ISOLATED AUTHENTICATION & LOGIN CONTROLLERS (Separate Login Pages)
 // ====================================================================
 
-function switchRegType(type) {
-  const userBtn = document.getElementById('reg-type-user-btn');
-  const stallBtn = document.getElementById('reg-type-stall-btn');
-  const scrapBtn = document.getElementById('reg-type-scrap-btn');
+// Real-time admin notifications storage
+state.adminLiveNotifications = state.adminLiveNotifications || [];
 
-  const userContainer = document.getElementById('form-reg-user-container');
-  const stallContainer = document.getElementById('form-reg-stall-container');
-  const scrapContainer = document.getElementById('form-reg-scrap-container');
-
-  [userBtn, stallBtn, scrapBtn].forEach(b => {
-    b?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
-    b?.classList.add('text-slate-600');
+function closeAllLoginModals() {
+  ['modal-login-user', 'modal-login-stall', 'modal-login-scrap', 'modal-login-admin', 'modal-auth'].forEach(id => {
+    document.getElementById(id)?.classList.add('hidden');
   });
+}
 
-  userContainer?.classList.add('hidden');
-  stallContainer?.classList.add('hidden');
-  scrapContainer?.classList.add('hidden');
-
-  if (type === 'user') {
-    userBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
-    userBtn?.classList.remove('text-slate-600');
-    userContainer?.classList.remove('hidden');
-  } else if (type === 'stall') {
-    stallBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
-    stallBtn?.classList.remove('text-slate-600');
-    stallContainer?.classList.remove('hidden');
-  } else if (type === 'scrap') {
-    scrapBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
-    scrapBtn?.classList.remove('text-slate-600');
-    scrapContainer?.classList.remove('hidden');
+function openLoginPortal(role = 'user') {
+  closeAllLoginModals();
+  if (role === 'admin') {
+    document.getElementById('modal-login-admin')?.classList.remove('hidden');
+    const pwd = document.getElementById('admin-login-password');
+    if (pwd) {
+      pwd.value = '';
+      pwd.focus();
+    }
+  } else if (role === 'stall' || role === 'book_stall') {
+    document.getElementById('modal-login-stall')?.classList.remove('hidden');
+    switchStallAuthTab('signin');
+  } else if (role === 'scrap' || role === 'raddi_owner') {
+    document.getElementById('modal-login-scrap')?.classList.remove('hidden');
+    switchScrapAuthTab('signin');
+  } else {
+    document.getElementById('modal-login-user')?.classList.remove('hidden');
+    switchUserAuthTab('signin');
   }
 }
 
-// OPTION 1: Normal User Registration Handler
+// 1. NORMAL USER AUTH TAB SWITCHER
+function switchUserAuthTab(tab) {
+  const signinBtn = document.getElementById('tab-user-signin');
+  const signupBtn = document.getElementById('tab-user-signup');
+  const signinView = document.getElementById('view-user-signin');
+  const signupView = document.getElementById('view-user-signup');
+  const errBox = document.getElementById('user-auth-error-box');
+  const succBox = document.getElementById('user-auth-success-box');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (tab === 'signup') {
+    signinBtn?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signinBtn?.classList.add('text-slate-600');
+    signupBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signupBtn?.classList.remove('text-slate-600');
+    signinView?.classList.add('hidden');
+    signupView?.classList.remove('hidden');
+  } else {
+    signupBtn?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signupBtn?.classList.add('text-slate-600');
+    signinBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signinBtn?.classList.remove('text-slate-600');
+    signupView?.classList.add('hidden');
+    signinView?.classList.remove('hidden');
+  }
+}
+
+// 2. BOOK STALL AUTH TAB SWITCHER
+function switchStallAuthTab(tab) {
+  const signinBtn = document.getElementById('tab-stall-signin');
+  const signupBtn = document.getElementById('tab-stall-signup');
+  const signinView = document.getElementById('view-stall-signin');
+  const signupView = document.getElementById('view-stall-signup');
+  const errBox = document.getElementById('stall-auth-error-box');
+  const succBox = document.getElementById('stall-auth-success-box');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (tab === 'signup') {
+    signinBtn?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signinBtn?.classList.add('text-slate-600');
+    signupBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signupBtn?.classList.remove('text-slate-600');
+    signinView?.classList.add('hidden');
+    signupView?.classList.remove('hidden');
+  } else {
+    signupBtn?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signupBtn?.classList.add('text-slate-600');
+    signinBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signinBtn?.classList.remove('text-slate-600');
+    signupView?.classList.add('hidden');
+    signinView?.classList.remove('hidden');
+  }
+}
+
+// 3. RECYCLE & SCRAP AUTH TAB SWITCHER
+function switchScrapAuthTab(tab) {
+  const signinBtn = document.getElementById('tab-scrap-signin');
+  const signupBtn = document.getElementById('tab-scrap-signup');
+  const signinView = document.getElementById('view-scrap-signin');
+  const signupView = document.getElementById('view-scrap-signup');
+  const errBox = document.getElementById('scrap-auth-error-box');
+  const succBox = document.getElementById('scrap-auth-success-box');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (tab === 'signup') {
+    signinBtn?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signinBtn?.classList.add('text-slate-600');
+    signupBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signupBtn?.classList.remove('text-slate-600');
+    signinView?.classList.add('hidden');
+    signupView?.classList.remove('hidden');
+  } else {
+    signupBtn?.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+    signupBtn?.classList.add('text-slate-600');
+    signinBtn?.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+    signinBtn?.classList.remove('text-slate-600');
+    signupView?.classList.add('hidden');
+    signinView?.classList.remove('hidden');
+  }
+}
+
+// Show/Hide Password Toggle Helper
+function togglePasswordVisibility(inputId, toggleBtn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (toggleBtn) toggleBtn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    if (toggleBtn) toggleBtn.textContent = '👁️';
+  }
+}
+
+// Forgot Password Flow
+function openForgotPasswordModal(portal = 'user') {
+  let emailVal = '';
+  if (portal === 'admin') emailVal = document.getElementById('admin-login-email')?.value || 'ganeshhonnalli07@gmail.com';
+  else if (portal === 'stall') emailVal = document.getElementById('stall-login-email')?.value || '';
+  else if (portal === 'scrap') emailVal = document.getElementById('scrap-login-email')?.value || '';
+  else emailVal = document.getElementById('user-login-email')?.value || '';
+
+  const emailInput = document.getElementById('forgot-password-email');
+  if (emailInput) emailInput.value = emailVal;
+
+  document.getElementById('forgot-password-error-box')?.classList.add('hidden');
+  document.getElementById('forgot-password-success-box')?.classList.add('hidden');
+  document.getElementById('modal-forgot-password')?.classList.remove('hidden');
+}
+
+async function handleForgotPasswordSubmit(event) {
+  if (event) event.preventDefault();
+  const email = document.getElementById('forgot-password-email')?.value?.trim();
+  const spinner = document.getElementById('forgot-password-spinner');
+  const btnText = document.getElementById('forgot-password-btn-text');
+  const submitBtn = document.getElementById('btn-forgot-password');
+  const errBox = document.getElementById('forgot-password-error-box');
+  const errMsg = document.getElementById('forgot-password-error-msg');
+  const succBox = document.getElementById('forgot-password-success-box');
+  const succMsg = document.getElementById('forgot-password-success-msg');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!email) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter your registered email address.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Sending Reset Link...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+
+    if (error) throw error;
+
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Password reset instructions dispatched to ' + email + '. Please check your inbox.';
+      succBox.classList.remove('hidden');
+    }
+    showToast('Password reset link sent to ' + email, 'success');
+  } catch (err) {
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Unable to dispatch reset link.';
+      errBox.classList.remove('hidden');
+    }
+  } finally {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Send Password Reset Link';
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+// Post-Login Location Request (Requirement 7)
+function promptPostLoginLocation() {
+  document.getElementById('modal-post-login-location')?.classList.remove('hidden');
+}
+
+function handlePostLoginLocationAllow() {
+  closeModal('modal-post-login-location');
+  requestBrowserLocation();
+}
+
+function handlePostLoginLocationManual() {
+  closeModal('modal-post-login-location');
+  openLocationModal();
+}
+
+// ====================================================================
+// Database User Role Synchronization Helper
+async function syncUserRole(userId, newRole, isApproved = true) {
+  if (!supabase || !userId) return;
+  try {
+    const { data: existing } = await supabase.from('user_roles').select('id').eq('user_id', userId).limit(1);
+    if (existing && existing.length > 0) {
+      await supabase.from('user_roles').update({ role: newRole, is_approved: isApproved }).eq('id', existing[0].id);
+    } else {
+      await supabase.from('user_roles').insert([{ user_id: userId, role: newRole, is_approved: isApproved }]);
+    }
+  } catch (err) {
+    console.warn('syncUserRole failed:', err);
+  }
+}
+
+// 1. NORMAL USER AUTHENTICATION HANDLERS
+// ====================================================================
+
+async function handleNormalUserLogin(event) {
+  if (event) event.preventDefault();
+  const email = document.getElementById('user-login-email')?.value?.trim();
+  const password = document.getElementById('user-login-password')?.value;
+  const remember = document.getElementById('user-login-remember')?.checked;
+  const errBox = document.getElementById('user-auth-error-box');
+  const errMsg = document.getElementById('user-auth-error-msg');
+  const succBox = document.getElementById('user-auth-success-box');
+  const succMsg = document.getElementById('user-auth-success-msg');
+  const spinner = document.getElementById('user-login-spinner');
+  const btnText = document.getElementById('user-login-btn-text');
+  const submitBtn = document.getElementById('btn-user-login');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!email || !password) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter your email and password.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Authenticating User...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    if (remember) localStorage.setItem('SECOND_SHELF_REMEMBER_USER_EMAIL', email);
+
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Sign in successful! Entering dashboard...';
+      succBox.classList.remove('hidden');
+    }
+
+    await resolveUserProfile(data.user);
+
+    setTimeout(() => {
+      closeModal('modal-login-user');
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Sign In to User Account';
+      if (submitBtn) submitBtn.disabled = false;
+
+      // Role check: Normal users go to Seller Dashboard
+      showSection('dashboard');
+      renderCurrentDashboard();
+      promptPostLoginLocation();
+    }, 600);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Sign In to User Account';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message.includes('Invalid login credentials') 
+        ? 'Invalid email or password. Please verify your credentials.' 
+        : err.message;
+      errBox.classList.remove('hidden');
+    }
+  }
+}
+
 async function handleNormalUserSignUp(event) {
   if (event) event.preventDefault();
-  const name = document.getElementById('reg-user-name')?.value?.trim();
-  const email = document.getElementById('reg-user-email')?.value?.trim();
-  const phone = document.getElementById('reg-user-phone')?.value?.trim();
-  const password = document.getElementById('reg-user-password')?.value;
-  const confirm = document.getElementById('reg-user-confirm')?.value;
-  const ageConfirm = document.getElementById('reg-user-age')?.checked;
+  const name = document.getElementById('user-reg-name')?.value?.trim();
+  const email = document.getElementById('user-reg-email')?.value?.trim();
+  const phone = document.getElementById('user-reg-phone')?.value?.trim();
+  const password = document.getElementById('user-reg-password')?.value;
+  const confirm = document.getElementById('user-reg-confirm')?.value;
+  const ageConfirm = document.getElementById('user-reg-age')?.checked;
 
-  const errorBox = document.getElementById('signup-error-box');
-  const errorMsg = document.getElementById('signup-error-msg');
-  const successBox = document.getElementById('signup-success-box');
-  const successMsg = document.getElementById('signup-success-msg');
-  const submitBtn = document.getElementById('btn-reg-user');
+  const errBox = document.getElementById('user-auth-error-box');
+  const errMsg = document.getElementById('user-auth-error-msg');
+  const succBox = document.getElementById('user-auth-success-box');
+  const succMsg = document.getElementById('user-auth-success-msg');
+  const spinner = document.getElementById('user-reg-spinner');
+  const btnText = document.getElementById('user-reg-btn-text');
+  const submitBtn = document.getElementById('btn-user-reg');
 
-  if (errorBox) errorBox.classList.add('hidden');
-  if (successBox) successBox.classList.add('hidden');
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
 
   if (!name || !email || !password || !phone) {
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = 'Please fill out all required fields.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please fill out all required fields.';
+      errBox.classList.remove('hidden');
     }
     return;
   }
 
   if (password.length < 8) {
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = 'Password must be at least 8 characters long.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Password must be at least 8 characters long.';
+      errBox.classList.remove('hidden');
     }
     return;
   }
 
   if (password !== confirm) {
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = 'Passwords do not match.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Passwords do not match.';
+      errBox.classList.remove('hidden');
     }
     return;
   }
 
   if (!ageConfirm) {
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = 'You must confirm that you are 18 years of age or older.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please confirm that you are 18 years of age or older.';
+      errBox.classList.remove('hidden');
     }
     return;
   }
 
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Creating Account...';
   if (submitBtn) submitBtn.disabled = true;
 
   try {
@@ -114,37 +380,127 @@ async function handleNormalUserSignUp(event) {
           age_confirmed: true,
           is_verified: true
         }]);
-        await supabase.from('user_roles').upsert([{
-          user_id: data.user.id,
-          role: 'seller',
-          is_approved: true
-        }]);
+        await syncUserRole(data.user.id, 'seller', true);
       } catch (e) {}
     }
 
-    if (successBox && successMsg) {
-      successMsg.textContent = 'Normal User Account created! Verification email dispatched to ' + email + '. You can now sign in.';
-      successBox.classList.remove('hidden');
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Normal User Account created! Verification email dispatched to ' + email + '. You can now sign in.';
+      succBox.classList.remove('hidden');
     }
     showToast('Registration successful! Please sign in.', 'success');
 
     setTimeout(() => {
-      switchAuthTab('signin');
-      const emailInput = document.getElementById('auth-signin-email');
+      switchUserAuthTab('signin');
+      const emailInput = document.getElementById('user-login-email');
       if (emailInput) emailInput.value = email;
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Create Normal User Account';
       if (submitBtn) submitBtn.disabled = false;
     }, 1500);
 
   } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Create Normal User Account';
     if (submitBtn) submitBtn.disabled = false;
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = err.message || 'Error creating account.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Error creating user account.';
+      errBox.classList.remove('hidden');
     }
   }
 }
 
-// OPTION 2: Book Stall Owner Registration Handler
+// ====================================================================
+// 2. BOOK STALL OWNER AUTHENTICATION HANDLERS
+// ====================================================================
+
+async function handleBookStallLogin(event) {
+  if (event) event.preventDefault();
+  const email = document.getElementById('stall-login-email')?.value?.trim();
+  const password = document.getElementById('stall-login-password')?.value;
+  const remember = document.getElementById('stall-login-remember')?.checked;
+  const errBox = document.getElementById('stall-auth-error-box');
+  const errMsg = document.getElementById('stall-auth-error-msg');
+  const succBox = document.getElementById('stall-auth-success-box');
+  const succMsg = document.getElementById('stall-auth-success-msg');
+  const spinner = document.getElementById('stall-login-spinner');
+  const btnText = document.getElementById('stall-login-btn-text');
+  const submitBtn = document.getElementById('btn-stall-login');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!email || !password) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter bookstore email and password.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Verifying Bookstore...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    // Check approval status in book_stalls
+    const { data: stall } = await supabase
+      .from('book_stalls')
+      .select('*')
+      .eq('user_id', data.user.id)
+      .maybeSingle();
+
+    if (!stall) {
+      // User registered as normal user, not a bookstore
+      await supabase.auth.signOut();
+      throw new Error('Account Mismatch: No bookstore registration found for this email. Please register as a Book Stall Owner first.');
+    }
+
+    if (stall.approval_status === 'pending') {
+      await supabase.auth.signOut();
+      throw new Error('Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.');
+    }
+
+    if (stall.approval_status === 'rejected') {
+      await supabase.auth.signOut();
+      throw new Error('Application Rejected: Your Book Stall Owner application was reviewed and rejected by the Administrator.');
+    }
+
+    if (remember) localStorage.setItem('SECOND_SHELF_REMEMBER_STALL_EMAIL', email);
+
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Verified Bookstore Partner! Opening console...';
+      succBox.classList.remove('hidden');
+    }
+
+    await resolveUserProfile(data.user);
+
+    setTimeout(() => {
+      closeModal('modal-login-stall');
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Sign In to Book Stall Dashboard';
+      if (submitBtn) submitBtn.disabled = false;
+
+      state.currentUser.role = 'book_stall';
+      showSection('dashboard');
+      renderCurrentDashboard();
+      promptPostLoginLocation();
+    }, 600);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Sign In to Book Stall Dashboard';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Error signing in to bookstore account.';
+      errBox.classList.remove('hidden');
+    }
+  }
+}
+
 async function handleBookStallSignUp(event) {
   if (event) event.preventDefault();
   const ownerName = document.getElementById('reg-stall-owner')?.value?.trim();
@@ -155,27 +511,38 @@ async function handleBookStallSignUp(event) {
   const stateVal = document.getElementById('reg-stall-state')?.value?.trim() || 'Karnataka';
   const district = document.getElementById('reg-stall-district')?.value?.trim() || 'Dharwad';
   const city = document.getElementById('reg-stall-city')?.value?.trim() || 'Hubli';
-  const location = document.getElementById('reg-stall-location')?.value?.trim() || 'Vidyanagar';
   const licence = document.getElementById('reg-stall-licence')?.value?.trim() || 'Pending';
   const password = document.getElementById('reg-stall-password')?.value;
 
-  const errorBox = document.getElementById('signup-error-box');
-  const errorMsg = document.getElementById('signup-error-msg');
-  const successBox = document.getElementById('signup-success-box');
-  const successMsg = document.getElementById('signup-success-msg');
+  const errBox = document.getElementById('stall-auth-error-box');
+  const errMsg = document.getElementById('stall-auth-error-msg');
+  const succBox = document.getElementById('stall-auth-success-box');
+  const succMsg = document.getElementById('stall-auth-success-msg');
+  const spinner = document.getElementById('stall-reg-spinner');
+  const btnText = document.getElementById('stall-reg-btn-text');
   const submitBtn = document.getElementById('btn-reg-stall');
 
-  if (errorBox) errorBox.classList.add('hidden');
-  if (successBox) successBox.classList.add('hidden');
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
 
   if (!ownerName || !stallName || !email || !phone || !address || !city || !password) {
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = 'Please fill out all mandatory fields for bookstore registration.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please fill out all required bookstore fields.';
+      errBox.classList.remove('hidden');
     }
     return;
   }
 
+  if (password.length < 8) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Password must be at least 8 characters long.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Submitting Application...';
   if (submitBtn) submitBtn.disabled = true;
 
   try {
@@ -186,17 +553,16 @@ async function handleBookStallSignUp(event) {
         data: {
           full_name: ownerName,
           phone: phone,
-          role: 'seller' // Default role remains seller until approved!
+          role: 'seller'
         }
       }
     });
 
     if (error) throw error;
 
-    const formattedAddress = `${address} | Locality: ${location} | City: ${city} | District: ${district} | State: ${stateVal}`;
+    const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
 
     if (data.user) {
-      // Create Profile
       try {
         await supabase.from('profiles').upsert([{
           id: data.user.id,
@@ -206,14 +572,9 @@ async function handleBookStallSignUp(event) {
           age_confirmed: true,
           is_verified: true
         }]);
-        await supabase.from('user_roles').upsert([{
-          user_id: data.user.id,
-          role: 'seller',
-          is_approved: false
-        }]);
+        await syncUserRole(data.user.id, 'seller', false);
       } catch (e) {}
 
-      // Create Book Stall Application with PENDING status
       try {
         await supabase.from('book_stalls').insert([{
           user_id: data.user.id,
@@ -229,7 +590,9 @@ async function handleBookStallSignUp(event) {
         console.warn('Stall insert fallback:', e);
       }
 
-      // Notify Admin
+      // Notify admin live
+      addAdminLiveNotification('Book Stall Application Submitted', ownerName, 'Book Stall', 'PENDING');
+
       try {
         await supabase.from('admin_audit_logs').insert([{
           action: 'partner_application',
@@ -244,37 +607,129 @@ async function handleBookStallSignUp(event) {
             state: stateVal,
             district: district,
             city: city,
-            location: location,
             status: 'pending'
           }
         }]);
       } catch (e) {}
     }
 
-    if (successBox && successMsg) {
-      successMsg.innerHTML = '<strong>Application Submitted!</strong> Your Book Stall registration is submitted. Waiting for Admin approval. You will receive an alert once verified.';
-      successBox.classList.remove('hidden');
+    if (succBox && succMsg) {
+      succMsg.innerHTML = '<strong>Application Submitted!</strong> Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.';
+      succBox.classList.remove('hidden');
     }
 
-    showToast('Your Book Stall registration is submitted. Waiting for Admin approval.', 'info');
+    showToast('Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
 
     setTimeout(() => {
-      switchAuthTab('signin');
-      const emailInput = document.getElementById('auth-signin-email');
+      switchStallAuthTab('signin');
+      const emailInput = document.getElementById('stall-login-email');
       if (emailInput) emailInput.value = email;
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Submit Book Stall Application for Admin Approval';
       if (submitBtn) submitBtn.disabled = false;
-    }, 2500);
+    }, 2000);
 
   } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Submit Book Stall Application for Admin Approval';
     if (submitBtn) submitBtn.disabled = false;
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = err.message || 'Error submitting book stall registration.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Error submitting bookstore application.';
+      errBox.classList.remove('hidden');
     }
   }
 }
 
-// OPTION 3: Recycle & Scrap Business Owner Registration Handler
+// ====================================================================
+// 3. RECYCLE & SCRAP OWNER AUTHENTICATION HANDLERS
+// ====================================================================
+
+async function handleScrapOwnerLogin(event) {
+  if (event) event.preventDefault();
+  const email = document.getElementById('scrap-login-email')?.value?.trim();
+  const password = document.getElementById('scrap-login-password')?.value;
+  const remember = document.getElementById('scrap-login-remember')?.checked;
+  const errBox = document.getElementById('scrap-auth-error-box');
+  const errMsg = document.getElementById('scrap-auth-error-msg');
+  const succBox = document.getElementById('scrap-auth-success-box');
+  const succMsg = document.getElementById('scrap-auth-success-msg');
+  const spinner = document.getElementById('scrap-login-spinner');
+  const btnText = document.getElementById('scrap-login-btn-text');
+  const submitBtn = document.getElementById('btn-scrap-login');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!email || !password) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter scrap business email and password.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Verifying Scrap Depot...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    // Check approval status in scrap_owners
+    const { data: scrap } = await supabase
+      .from('scrap_owners')
+      .select('*')
+      .eq('user_id', data.user.id)
+      .maybeSingle();
+
+    if (!scrap) {
+      await supabase.auth.signOut();
+      throw new Error('Account Mismatch: No scrap business registration found for this email. Please register as a Scrap Business Owner first.');
+    }
+
+    if (scrap.approval_status === 'pending') {
+      await supabase.auth.signOut();
+      throw new Error('Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.');
+    }
+
+    if (scrap.approval_status === 'rejected') {
+      await supabase.auth.signOut();
+      throw new Error('Application Rejected: Your Scrap Business application was reviewed and rejected by the Administrator.');
+    }
+
+    if (remember) localStorage.setItem('SECOND_SHELF_REMEMBER_SCRAP_EMAIL', email);
+
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Verified Scrap Partner! Opening console...';
+      succBox.classList.remove('hidden');
+    }
+
+    await resolveUserProfile(data.user);
+
+    setTimeout(() => {
+      closeModal('modal-login-scrap');
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Sign In to Scrap Business Dashboard';
+      if (submitBtn) submitBtn.disabled = false;
+
+      state.currentUser.role = 'raddi_owner';
+      showSection('dashboard');
+      renderCurrentDashboard();
+      promptPostLoginLocation();
+    }, 600);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Sign In to Scrap Business Dashboard';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Error signing in to scrap business account.';
+      errBox.classList.remove('hidden');
+    }
+  }
+}
+
 async function handleScrapOwnerSignUp(event) {
   if (event) event.preventDefault();
   const ownerName = document.getElementById('reg-scrap-owner')?.value?.trim();
@@ -285,27 +740,38 @@ async function handleScrapOwnerSignUp(event) {
   const stateVal = document.getElementById('reg-scrap-state')?.value?.trim() || 'Karnataka';
   const district = document.getElementById('reg-scrap-district')?.value?.trim() || 'Dharwad';
   const city = document.getElementById('reg-scrap-city')?.value?.trim() || 'Hubli';
-  const location = document.getElementById('reg-scrap-location')?.value?.trim() || 'Keshwapur';
   const licence = document.getElementById('reg-scrap-licence')?.value?.trim() || 'Pending';
   const password = document.getElementById('reg-scrap-password')?.value;
 
-  const errorBox = document.getElementById('signup-error-box');
-  const errorMsg = document.getElementById('signup-error-msg');
-  const successBox = document.getElementById('signup-success-box');
-  const successMsg = document.getElementById('signup-success-msg');
+  const errBox = document.getElementById('scrap-auth-error-box');
+  const errMsg = document.getElementById('scrap-auth-error-msg');
+  const succBox = document.getElementById('scrap-auth-success-box');
+  const succMsg = document.getElementById('scrap-auth-success-msg');
+  const spinner = document.getElementById('scrap-reg-spinner');
+  const btnText = document.getElementById('scrap-reg-btn-text');
   const submitBtn = document.getElementById('btn-reg-scrap');
 
-  if (errorBox) errorBox.classList.add('hidden');
-  if (successBox) successBox.classList.add('hidden');
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
 
   if (!ownerName || !bizName || !email || !phone || !address || !city || !password) {
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = 'Please fill out all mandatory fields for scrap depot registration.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please fill out all required scrap business fields.';
+      errBox.classList.remove('hidden');
     }
     return;
   }
 
+  if (password.length < 8) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Password must be at least 8 characters long.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Submitting Application...';
   if (submitBtn) submitBtn.disabled = true;
 
   try {
@@ -316,14 +782,14 @@ async function handleScrapOwnerSignUp(event) {
         data: {
           full_name: ownerName,
           phone: phone,
-          role: 'seller' // Default role remains seller until approved!
+          role: 'seller'
         }
       }
     });
 
     if (error) throw error;
 
-    const formattedAddress = `${address} | Locality: ${location} | City: ${city} | District: ${district} | State: ${stateVal}`;
+    const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
 
     if (data.user) {
       try {
@@ -335,14 +801,9 @@ async function handleScrapOwnerSignUp(event) {
           age_confirmed: true,
           is_verified: true
         }]);
-        await supabase.from('user_roles').upsert([{
-          user_id: data.user.id,
-          role: 'seller',
-          is_approved: false
-        }]);
+        await syncUserRole(data.user.id, 'seller', false);
       } catch (e) {}
 
-      // Create Scrap Owner Application with PENDING status
       try {
         await supabase.from('scrap_owners').insert([{
           user_id: data.user.id,
@@ -351,7 +812,7 @@ async function handleScrapOwnerSignUp(event) {
           phone: phone,
           licence_number: licence,
           address: formattedAddress,
-          base_area: location || city,
+          base_area: city,
           pincode: '580020',
           approval_status: 'pending'
         }]);
@@ -359,7 +820,9 @@ async function handleScrapOwnerSignUp(event) {
         console.warn('Scrap insert fallback:', e);
       }
 
-      // Notify Admin
+      // Notify admin live
+      addAdminLiveNotification('Scrap Business Application Submitted', ownerName, 'Recycle & Scrap', 'PENDING');
+
       try {
         await supabase.from('admin_audit_logs').insert([{
           action: 'partner_application',
@@ -374,34 +837,204 @@ async function handleScrapOwnerSignUp(event) {
             state: stateVal,
             district: district,
             city: city,
-            location: location,
             status: 'pending'
           }
         }]);
       } catch (e) {}
     }
 
-    if (successBox && successMsg) {
-      successMsg.innerHTML = '<strong>Application Submitted!</strong> Your Scrap Business registration is submitted. Waiting for Admin approval. You will be notified once activated.';
-      successBox.classList.remove('hidden');
+    if (succBox && succMsg) {
+      succMsg.innerHTML = '<strong>Application Submitted!</strong> Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.';
+      succBox.classList.remove('hidden');
     }
 
-    showToast('Your Scrap Business registration is submitted. Waiting for Admin approval.', 'info');
+    showToast('Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
 
     setTimeout(() => {
-      switchAuthTab('signin');
-      const emailInput = document.getElementById('auth-signin-email');
+      switchScrapAuthTab('signin');
+      const emailInput = document.getElementById('scrap-login-email');
       if (emailInput) emailInput.value = email;
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Submit Scrap Business Application for Admin Approval';
       if (submitBtn) submitBtn.disabled = false;
-    }, 2500);
+    }, 2000);
 
   } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Submit Scrap Business Application for Admin Approval';
     if (submitBtn) submitBtn.disabled = false;
-    if (errorBox && errorMsg) {
-      errorMsg.textContent = err.message || 'Error submitting scrap business registration.';
-      errorBox.classList.remove('hidden');
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Error submitting scrap business application.';
+      errBox.classList.remove('hidden');
     }
   }
+}
+
+// ====================================================================
+// 4. MASTER ADMINISTRATOR AUTHENTICATION (Strictly ganeshhonnalli07@gmail.com)
+// ====================================================================
+
+async function handleMasterAdminLogin(event) {
+  if (event) event.preventDefault();
+  const email = MASTER_ADMIN_EMAIL;
+  const password = document.getElementById('admin-login-password')?.value;
+  const errBox = document.getElementById('admin-auth-error-box');
+  const errMsg = document.getElementById('admin-auth-error-msg');
+  const succBox = document.getElementById('admin-auth-success-box');
+  const succMsg = document.getElementById('admin-auth-success-msg');
+  const spinner = document.getElementById('admin-login-spinner');
+  const btnText = document.getElementById('admin-login-btn-text');
+  const submitBtn = document.getElementById('btn-admin-login');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!password) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter your administrator password.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Authenticating Root Access...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    if (data.user.email !== MASTER_ADMIN_EMAIL) {
+      await supabase.auth.signOut();
+      throw new Error('Access Denied: Only the provisioned administrator (' + MASTER_ADMIN_EMAIL + ') can access this console.');
+    }
+
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Admin Authenticated! Opening Administration Console...';
+      succBox.classList.remove('hidden');
+    }
+
+    await resolveUserProfile(data.user);
+    state.currentUser.role = 'admin';
+
+    setTimeout(() => {
+      closeModal('modal-login-admin');
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Authenticate Administrator Access';
+      if (submitBtn) submitBtn.disabled = false;
+
+      showSection('dashboard');
+      setAdminTab('approvals');
+      showToast('Welcome, Administrator Ganesh Honnalli', 'success');
+    }, 600);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Authenticate Administrator Access';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message.includes('Invalid login credentials') 
+        ? 'Invalid administrator credentials. Please check your password.' 
+        : err.message;
+      errBox.classList.remove('hidden');
+    }
+  }
+}
+
+// Live Admin Notification Dispatcher (Requirement 6)
+function addAdminLiveNotification(title, applicantName, bizType, status) {
+  const notif = {
+    title,
+    applicantName,
+    bizType,
+    time: new Date().toLocaleTimeString(),
+    date: new Date().toLocaleDateString(),
+    status
+  };
+  state.adminLiveNotifications.unshift(notif);
+  showToast(`🔔 ${title}: ${applicantName} (${bizType})`, 'info');
+  updateAdminNotificationCountUI();
+}
+
+function updateAdminNotificationCountUI() {
+  const pendingStalls = (state.bookStalls || []).filter(s => (s.approval_status || '').toLowerCase() === 'pending').length;
+  const pendingScraps = (state.scrapOwners || []).filter(r => (r.approval_status || '').toLowerCase() === 'pending').length;
+  const total = pendingStalls + pendingScraps;
+
+  const tabBtn = document.getElementById('admin-tab-approvals');
+  if (tabBtn) {
+    tabBtn.textContent = `📋 Partner Approvals (${total})`;
+  }
+}
+
+// Admin Application Review Modal (Requirements 4 & 5: View Details)
+function openApplicationDetailsModal(type, id) {
+  let app = null;
+  if (type === 'stall') {
+    app = (state.bookStalls || []).find(s => s.id === id);
+  } else {
+    app = (state.scrapOwners || []).find(r => r.id === id);
+  }
+
+  if (!app) {
+    showToast('Application record not found.', 'error');
+    return;
+  }
+
+  const loc = getBusinessLocation(app);
+  const email = (state.profiles || []).find(p => p.id === app.user_id)?.email || app.phone || 'applicant@secondshelf.in';
+
+  document.getElementById('app-modal-icon').textContent = type === 'stall' ? '🏬' : '♻️';
+  document.getElementById('app-modal-title').textContent = type === 'stall' ? (app.stall_name || 'Book Stall Application') : (app.business_name || 'Scrap Yard Application');
+  document.getElementById('app-modal-subtitle').textContent = `Submitted on ${app.created_at ? new Date(app.created_at).toLocaleString() : 'Recent'}`;
+
+  const contentEl = document.getElementById('app-modal-content');
+  if (contentEl) {
+    contentEl.innerHTML = `
+      <div class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <div class="grid grid-cols-2 gap-2 border-b pb-2">
+          <div><span class="text-slate-500 font-bold">Applicant / Owner:</span> <strong class="text-slate-900">${app.owner_name}</strong></div>
+          <div><span class="text-slate-500 font-bold">Business Type:</span> <strong class="text-emerald-800">${type === 'stall' ? 'Book Stall' : 'Recycle & Scrap'}</strong></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 border-b pb-2">
+          <div><span class="text-slate-500 font-bold">Contact Email:</span> <span class="text-slate-900 font-mono">${email}</span></div>
+          <div><span class="text-slate-500 font-bold">Mobile Phone:</span> <strong class="text-slate-900 font-mono">${app.phone}</strong></div>
+        </div>
+        <div class="border-b pb-2">
+          <span class="text-slate-500 font-bold">Physical Business Address:</span>
+          <p class="text-slate-900 mt-0.5">${loc.fullAddress || app.address}</p>
+        </div>
+        <div class="grid grid-cols-3 gap-2 border-b pb-2">
+          <div><span class="text-slate-500 font-bold">City:</span> <strong class="text-slate-900">${loc.city}</strong></div>
+          <div><span class="text-slate-500 font-bold">District:</span> <strong class="text-slate-900">${loc.district}</strong></div>
+          <div><span class="text-slate-500 font-bold">State:</span> <strong class="text-slate-900">${loc.state}</strong></div>
+        </div>
+        <div>
+          <span class="text-slate-500 font-bold">Trade / Operation Licence:</span>
+          <p class="font-mono text-slate-800 mt-0.5">${app.licence_number || 'Under Verification'}</p>
+        </div>
+        <div class="pt-1">
+          <span class="text-slate-500 font-bold">Application Status:</span>
+          <span class="ml-2 px-2.5 py-0.5 rounded-full text-xs font-black uppercase ${app.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900' }">${app.approval_status || 'PENDING'}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const actionsEl = document.getElementById('app-modal-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button onclick="approveBusiness('${type}', '${id}'); closeModal('modal-application-details');" class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-4 py-2 rounded-lg text-xs shadow transition">
+        APPROVE APPLICATION ✅
+      </button>
+      <button onclick="rejectBusiness('${type}', '${id}'); closeModal('modal-application-details');" class="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-4 py-2 rounded-lg text-xs shadow transition">
+        REJECT APPLICATION ❌
+      </button>
+    `;
+  }
+
+  document.getElementById('modal-application-details')?.classList.remove('hidden');
 }
 
 
@@ -743,25 +1376,14 @@ function switchAuthTab(tab) {
   }
 }
 
-function togglePasswordVisibility(inputId, btn) {
-  const input = document.getElementById(inputId);
-  if (!input) return;
-  if (input.type === 'password') {
-    input.type = 'text';
-    if (btn) btn.textContent = '🙈';
-  } else {
-    input.type = 'password';
-    if (btn) btn.textContent = '👁️';
-  }
-}
+// togglePasswordVisibility defined at top
 
 // Unified Account Header Button Click Handler
 function handleAccountButtonClick() {
   if (state.currentUser) {
     openCurrentRoleDashboard();
   } else {
-    document.getElementById('modal-auth')?.classList.remove('hidden');
-    switchAuthTab('signin');
+    openLoginPortal('user');
   }
 }
 
@@ -1842,7 +2464,25 @@ async function resolveUserProfile(user) {
       if (approvedRole) {
         primaryRole = approvedRole.role;
       } else {
-        primaryRole = 'seller'; // Unapproved partners remain normal users
+        // Fallback: Check book_stalls and scrap_owners directly in case user_roles RLS prevents reads
+        let fallbackRole = null;
+        try {
+          const { data: bStall } = await supabase.from('book_stalls').select('id, approval_status').eq('user_id', user.id).maybeSingle();
+          if (bStall && (bStall.approval_status === 'approved' || bStall.is_approved)) {
+            fallbackRole = 'book_stall';
+          }
+        } catch (e) {}
+
+        if (!fallbackRole) {
+          try {
+            const { data: sOwner } = await supabase.from('scrap_owners').select('id, approval_status').eq('user_id', user.id).maybeSingle();
+            if (sOwner && (sOwner.approval_status === 'approved' || sOwner.is_approved)) {
+              fallbackRole = 'raddi_owner';
+            }
+          } catch (e) {}
+        }
+
+        primaryRole = fallbackRole || 'seller';
       }
     }
 
@@ -4303,7 +4943,7 @@ function setAdminTab(tab) {
     `;
   }
 
-  // TAB 3: PENDING BUSINESS APPROVALS (Requirement 5)
+  // TAB 3: PARTNER APPROVALS (Requirements 4, 5, 6)
   else if (tab === 'approvals') {
     const pendingStalls = (state.bookStalls || []).filter(s => (s.approval_status || '').toLowerCase() === 'pending').map(s => ({
       ...s,
@@ -4329,70 +4969,100 @@ function setAdminTab(tab) {
 
     container.innerHTML = `
       <div class="space-y-6">
-        <!-- Section: Pending Business Approvals (Exact Requirement 5) -->
+        <!-- Live Real-Time Notifications Area (Requirement 6) -->
+        <div class="bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-800 text-white rounded-xl p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-emerald-800/80 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🔔</span>
+              <h3 class="font-extrabold text-sm text-amber-300 uppercase tracking-wider">Admin Real-Time Application Notifications</h3>
+              <span class="bg-emerald-800/80 text-emerald-200 border border-emerald-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                Active Stream
+              </span>
+            </div>
+            <span class="text-xs font-mono font-bold text-emerald-300">
+              ${allPending.length} Applications Pending
+            </span>
+          </div>
+
+          ${(state.adminLiveNotifications && state.adminLiveNotifications.length > 0) ? `
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              ${state.adminLiveNotifications.map(n => `
+                <div class="bg-emerald-900/50 border border-emerald-700/60 rounded-lg p-2.5 text-xs flex items-center justify-between gap-2">
+                  <div>
+                    <div class="font-bold text-slate-100 flex items-center gap-1.5">
+                      <span>${n.bizType === 'Book Stall' ? '🏬' : '♻️'}</span>
+                      <span>${n.title}</span>
+                    </div>
+                    <div class="text-[11px] text-emerald-200 mt-0.5">
+                      Applicant: <strong>${n.applicantName}</strong> • Type: ${n.bizType} • ${n.time}
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-2 py-0.5 rounded font-black uppercase ${n.status === 'APPROVED' ? 'bg-emerald-200 text-emerald-950' : n.status === 'REJECTED' ? 'bg-rose-200 text-rose-950' : 'bg-amber-200 text-amber-950'}">
+                    ${n.status}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div class="text-xs text-emerald-300/80 flex items-center gap-2 py-1">
+              <span>⚡</span> Connected to Supabase Realtime. New Book Stall & Scrap Owner registrations appear here instantly.
+            </div>
+          `}
+        </div>
+
+        <!-- Section 1: BOOK STALL OWNER APPROVAL REQUESTS (Exact Requirement 4) -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
             <div>
               <div class="flex items-center gap-2">
-                <span class="text-xl">📋</span>
-                <h3 class="font-extrabold text-base text-slate-900">Pending Business Approvals</h3>
-                <span class="bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black px-2.5 py-0.5 rounded-full">
-                  ${allPending.length} Pending
+                <span class="text-2xl">🏬</span>
+                <h3 class="font-black text-base text-slate-900 tracking-tight">BOOK STALL OWNER APPROVAL REQUESTS</h3>
+                <span class="bg-blue-100 text-blue-900 border border-blue-300 text-xs font-black px-2.5 py-0.5 rounded-full">
+                  ${pendingStalls.length} Pending
                 </span>
               </div>
               <p class="text-xs text-slate-500 mt-0.5">
-                New Book Stall & Scrap Business registrations waiting for Administrator verification before accessing business dashboards.
+                New bookstore registrations waiting for Administrator verification before granting Book Stall Owner Dashboard access.
               </p>
             </div>
             <button onclick="refreshRequestsAndOffers().then(() => setAdminTab('approvals'))" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs border border-slate-300 transition flex items-center gap-1 self-start sm:self-auto">
-              <span>🔄</span> Refresh Approvals
+              <span>🔄</span> Refresh Stalls
             </button>
           </div>
 
-          ${allPending.length === 0 ? `
+          ${pendingStalls.length === 0 ? `
             <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs space-y-1">
               <span class="text-3xl block mb-2">✅</span>
-              <strong class="text-slate-700">No Pending Business Approvals</strong>
-              <p>All book stalls and scrap businesses have been reviewed. New applications will appear here automatically via Supabase Realtime.</p>
+              <strong class="text-slate-700">No Pending Book Stall Applications</strong>
+              <p>All bookstore owner registrations have been processed.</p>
             </div>
           ` : `
             <div class="overflow-x-auto">
               <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
                 <thead class="bg-slate-100 text-slate-700 font-bold border-b">
                   <tr>
-                    <th class="p-3">Applicant Name</th>
-                    <th class="p-3">Email</th>
+                    <th class="p-3">Owner Name</th>
+                    <th class="p-3">Stall Name</th>
+                    <th class="p-3">Email Address</th>
                     <th class="p-3">Phone Number</th>
-                    <th class="p-3">Business Name</th>
-                    <th class="p-3">Business Type</th>
-                    <th class="p-3">State</th>
-                    <th class="p-3">District</th>
-                    <th class="p-3">City</th>
+                    <th class="p-3">Location (City, District)</th>
                     <th class="p-3">Submitted Date</th>
                     <th class="p-3">Status</th>
                     <th class="p-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 font-medium">
-                  ${allPending.map(item => `
+                  ${pendingStalls.map(s => `
                     <tr class="hover:bg-slate-50 transition">
-                      <td class="p-3 font-bold text-slate-900">${item.owner_name || 'N/A'}</td>
-                      <td class="p-3 text-slate-600 font-mono text-[11px]">${item.userEmail}</td>
-                      <td class="p-3 text-slate-700 font-bold">${item.phone || 'N/A'}</td>
-                      <td class="p-3 font-extrabold text-slate-900">
-                        <span class="mr-1">${item.applicantType === 'stall' ? '🏬' : '♻️'}</span>
-                        ${item.bizName}
+                      <td class="p-3 font-bold text-slate-900">${s.owner_name}</td>
+                      <td class="p-3 font-extrabold text-blue-900">
+                        <span class="mr-1">🏬</span>${s.stall_name}
                       </td>
-                      <td class="p-3">
-                        <span class="px-2 py-0.5 rounded text-[11px] font-bold ${item.applicantType === 'stall' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
-                          ${item.bizType}
-                        </span>
-                      </td>
-                      <td class="p-3 text-slate-700">${item.locationInfo.state}</td>
-                      <td class="p-3 text-slate-700">${item.locationInfo.district}</td>
-                      <td class="p-3 text-slate-900 font-semibold">${item.locationInfo.city}</td>
+                      <td class="p-3 text-slate-600 font-mono text-[11px]">${s.userEmail}</td>
+                      <td class="p-3 text-slate-700 font-bold">${s.phone || 'N/A'}</td>
+                      <td class="p-3 text-slate-800">${s.locationInfo.city}, ${s.locationInfo.district}</td>
                       <td class="p-3 text-slate-500 font-mono text-[11px]">
-                        ${item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Today'}
+                        ${s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Today'}
                       </td>
                       <td class="p-3">
                         <span class="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold text-[10px] uppercase border border-amber-300">
@@ -4400,16 +5070,23 @@ function setAdminTab(tab) {
                         </span>
                       </td>
                       <td class="p-3 text-center">
-                        <div class="flex items-center justify-center gap-2">
+                        <div class="flex items-center justify-center gap-1.5">
                           <button 
-                            onclick="approveBusiness('${item.applicantType}', '${item.id}')" 
+                            onclick="openApplicationDetailsModal('stall', '${s.id}')" 
+                            class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs border border-slate-300 transition"
+                            title="View Complete Application Details"
+                          >
+                            View Details
+                          </button>
+                          <button 
+                            onclick="approveBusiness('stall', '${s.id}')" 
                             class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-sm hover:shadow transition"
-                            title="Approve registration and activate business role"
+                            title="Approve bookstore and activate Stall Owner Dashboard"
                           >
                             APPROVE
                           </button>
                           <button 
-                            onclick="rejectBusiness('${item.applicantType}', '${item.id}')" 
+                            onclick="rejectBusiness('stall', '${s.id}')" 
                             class="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-sm hover:shadow transition"
                             title="Reject application and keep dashboard access disabled"
                           >
@@ -4425,7 +5102,99 @@ function setAdminTab(tab) {
           `}
         </div>
 
-        <!-- Section 2: Approved Businesses Network -->
+        <!-- Section 2: RECYCLE & SCRAP OWNER APPROVAL REQUESTS (Exact Requirement 5) -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-2xl">♻️</span>
+                <h3 class="font-black text-base text-slate-900 tracking-tight">RECYCLE & SCRAP OWNER APPROVAL REQUESTS</h3>
+                <span class="bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-black px-2.5 py-0.5 rounded-full">
+                  ${pendingScraps.length} Pending
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Commercial paper recycling depot registrations waiting for Administrator verification before accessing the Scrap Owner Dashboard.
+              </p>
+            </div>
+            <button onclick="refreshRequestsAndOffers().then(() => setAdminTab('approvals'))" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs border border-slate-300 transition flex items-center gap-1 self-start sm:self-auto">
+              <span>🔄</span> Refresh Scraps
+            </button>
+          </div>
+
+          ${pendingScraps.length === 0 ? `
+            <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs space-y-1">
+              <span class="text-3xl block mb-2">✅</span>
+              <strong class="text-slate-700">No Pending Scrap Business Applications</strong>
+              <p>All paper recycling depot registrations have been processed.</p>
+            </div>
+          ` : `
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+                <thead class="bg-slate-100 text-slate-700 font-bold border-b">
+                  <tr>
+                    <th class="p-3">Owner Name</th>
+                    <th class="p-3">Business Name</th>
+                    <th class="p-3">Email Address</th>
+                    <th class="p-3">Phone Number</th>
+                    <th class="p-3">Location (City, District)</th>
+                    <th class="p-3">Application Date</th>
+                    <th class="p-3">Approval Status</th>
+                    <th class="p-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium">
+                  ${pendingScraps.map(r => `
+                    <tr class="hover:bg-slate-50 transition">
+                      <td class="p-3 font-bold text-slate-900">${r.owner_name}</td>
+                      <td class="p-3 font-extrabold text-emerald-900">
+                        <span class="mr-1">♻️</span>${r.business_name}
+                      </td>
+                      <td class="p-3 text-slate-600 font-mono text-[11px]">${r.userEmail}</td>
+                      <td class="p-3 text-slate-700 font-bold">${r.phone || 'N/A'}</td>
+                      <td class="p-3 text-slate-800">${r.locationInfo.city}, ${r.locationInfo.district}</td>
+                      <td class="p-3 text-slate-500 font-mono text-[11px]">
+                        ${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Today'}
+                      </td>
+                      <td class="p-3">
+                        <span class="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold text-[10px] uppercase border border-amber-300">
+                          PENDING
+                        </span>
+                      </td>
+                      <td class="p-3 text-center">
+                        <div class="flex items-center justify-center gap-1.5">
+                          <button 
+                            onclick="openApplicationDetailsModal('scrap', '${r.id}')" 
+                            class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs border border-slate-300 transition"
+                            title="View Complete Application Details"
+                          >
+                            View Details
+                          </button>
+                          <button 
+                            onclick="approveBusiness('raddi', '${r.id}')" 
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-sm hover:shadow transition"
+                            title="Approve depot and activate Scrap Owner Dashboard"
+                          >
+                            APPROVE
+                          </button>
+                          <button 
+                            onclick="rejectBusiness('raddi', '${r.id}')" 
+                            class="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-sm hover:shadow transition"
+                            title="Reject application and keep dashboard access disabled"
+                          >
+                            REJECT
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+
+        <!-- Section 3: Approved Businesses Network -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
           <div class="border-b pb-3">
             <h3 class="font-extrabold text-base text-slate-900">Approved Partner Network (${approvedStalls.length + approvedScraps.length})</h3>
@@ -4667,13 +5436,14 @@ async function approveBusiness(type, id) {
         if (stall) {
           stall.approval_status = 'approved';
           stall.is_approved = true;
-          await supabase.from('user_roles').update({ role: 'book_stall', is_approved: true }).eq('user_id', stall.user_id);
+          await syncUserRole(stall.user_id, 'book_stall', true);
           await supabase.from('notifications').insert({
             user_id: stall.user_id,
             title: 'Book Stall Partner Approved! 🎉',
             message: 'Your bookstore application has been verified by Administrator. You now have full access to your Book Stall Console.',
             notification_type: 'account_approved'
           });
+          addAdminLiveNotification('Book Stall Application Approved', stall.owner_name, 'Book Stall', 'APPROVED');
         }
       } else {
         await supabase.from('scrap_owners').update({ approval_status: 'approved', is_approved: true }).eq('id', id);
@@ -4681,13 +5451,14 @@ async function approveBusiness(type, id) {
         if (scrap) {
           scrap.approval_status = 'approved';
           scrap.is_approved = true;
-          await supabase.from('user_roles').update({ role: 'raddi_owner', is_approved: true }).eq('user_id', scrap.user_id);
+          await syncUserRole(scrap.user_id, 'raddi_owner', true);
           await supabase.from('notifications').insert({
             user_id: scrap.user_id,
             title: 'Scrap Depot Approved! 🎉',
             message: 'Your scrap paper recycling depot has been verified. You now have full access to your Scrap Recycler Console.',
             notification_type: 'account_approved'
           });
+          addAdminLiveNotification('Scrap Business Approved', scrap.owner_name, 'Recycle & Scrap', 'APPROVED');
         }
       }
     } catch (e) {
@@ -4708,26 +5479,28 @@ async function rejectBusiness(type, id) {
         const stall = state.bookStalls.find(s => s.id === id);
         if (stall) {
           stall.approval_status = 'rejected';
-          await supabase.from('user_roles').update({ is_approved: false, role: 'seller' }).eq('user_id', stall.user_id);
+          await syncUserRole(stall.user_id, 'seller', false);
           await supabase.from('notifications').insert({
             user_id: stall.user_id,
             title: 'Book Stall Application Update',
             message: 'Your Book Stall application was reviewed and rejected by Administrator.',
             notification_type: 'account_rejected'
           });
+          addAdminLiveNotification('Book Stall Application Rejected', stall.owner_name, 'Book Stall', 'REJECTED');
         }
       } else {
         await supabase.from('scrap_owners').update({ approval_status: 'rejected' }).eq('id', id);
         const scrap = state.scrapOwners.find(s => s.id === id);
         if (scrap) {
           scrap.approval_status = 'rejected';
-          await supabase.from('user_roles').update({ is_approved: false, role: 'seller' }).eq('user_id', scrap.user_id);
+          await syncUserRole(scrap.user_id, 'seller', false);
           await supabase.from('notifications').insert({
             user_id: scrap.user_id,
             title: 'Scrap Business Application Update',
             message: 'Your Scrap Business application was reviewed and rejected by Administrator.',
             notification_type: 'account_rejected'
           });
+          addAdminLiveNotification('Scrap Business Rejected', scrap.owner_name, 'Recycle & Scrap', 'REJECTED');
         }
       }
     } catch (e) {
@@ -4952,33 +5725,6 @@ function updateUserRoleUI() {
 // Modal open/close helpers
 function openPortalSelector() {
   openLoginPortal('seller');
-}
-
-function openLoginPortal(role = 'seller') {
-  const modal = document.getElementById('modal-auth');
-  if (modal) modal.classList.remove('hidden');
-  switchAuthTab('signin');
-
-  const emailInput = document.getElementById('auth-signin-email');
-  const passwordInput = document.getElementById('auth-signin-password');
-
-  if (role === 'admin') {
-    if (emailInput) emailInput.value = 'ganeshhonnalli07@gmail.com';
-    if (passwordInput) {
-      passwordInput.value = '';
-      passwordInput.placeholder = 'Enter Admin Password';
-      passwordInput.focus();
-    }
-    showToast('Administrator Sign In: Enter your secure admin password', 'info');
-  } else if (role === 'book_stall') {
-    if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. bookstore.owner@example.com';
-    showToast('Book Stall Partner Sign In: Enter your bookstore login', 'info');
-  } else if (role === 'raddi_owner') {
-    if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. scrap.dealer@example.com';
-    showToast('Scrap Recycler Sign In: Enter your scrap depot login', 'info');
-  } else {
-    if (emailInput && !emailInput.value) emailInput.placeholder = 'e.g. your.email@example.com';
-  }
 }
 
 function switchPortalTab(tab) {

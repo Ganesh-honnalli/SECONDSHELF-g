@@ -1627,59 +1627,51 @@
   <!-- MODAL: UNIFIED USER & PARTNER AUTHENTICATION (Modern & Secure)      -->
   <!-- Supports Normal Users, Book Stall Owners, Scrap Owners & Admin       -->
   <!-- ==================================================================== -->
-  <div id="modal-auth" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-900 border border-slate-200 max-h-[94vh] flex flex-col transition-all">
-      
-      <!-- Top Modal Header -->
+  
+  <!-- ==================================================================== -->
+  <!-- 1. MODAL: NORMAL USER LOGIN & REGISTRATION                           -->
+  <!-- Completely separate & isolated. Shows ONLY User Login & Registration -->
+  <!-- ==================================================================== -->
+  <div id="modal-login-user" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border border-slate-200 max-h-[94vh] flex flex-col transition-all">
+      <!-- Modal Header -->
       <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
         <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-shelf-forest border border-amber-400 flex items-center justify-center text-amber-300 text-base font-black shadow-sm">
-            📚
+          <div class="w-10 h-10 rounded-xl bg-shelf-forest border border-amber-400 flex items-center justify-center text-amber-300 text-lg font-black shadow-sm">
+            👤
           </div>
           <div>
-            <h3 class="text-base font-extrabold text-slate-900">SECOND SHELF Portal</h3>
-            <p class="text-[11px] text-slate-500">Sign in or register as a User, Book Stall, or Scrap Recycler</p>
+            <h3 class="text-base font-extrabold text-slate-900">Student & User Portal</h3>
+            <p class="text-[11px] text-slate-500 font-medium">Buy & sell old college books and paper scrap</p>
           </div>
         </div>
-        <button onclick="closeModal('modal-auth')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
+        <button onclick="closeModal('modal-login-user')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
       </div>
 
-      <!-- Active Session Notice (When user is already signed in) -->
-      <div id="modal-active-session-banner" class="hidden bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 flex items-center justify-between gap-2 mt-3 shadow-sm flex-shrink-0">
-        <div class="flex items-center gap-2">
-          <span class="text-base">👤</span>
-          <span>Signed in as <strong id="modal-current-user-name" class="text-slate-900">User</strong> (<span id="modal-current-user-role" class="font-bold text-emerald-800">Member</span>)</span>
-        </div>
-        <button type="button" onclick="logout()" class="bg-rose-700 hover:bg-rose-800 text-white font-bold px-2.5 py-1 rounded text-[11px] whitespace-nowrap shadow transition">
-          Sign Out
-        </button>
-      </div>
-
-      <!-- Auth Switcher Tabs (Sign In / Register) -->
+      <!-- Auth Tabs: Sign In vs Register -->
       <div class="grid grid-cols-2 p-1 bg-slate-100 rounded-xl mt-3 flex-shrink-0 font-bold text-xs text-center border border-slate-200">
-        <button type="button" id="tab-auth-signin" onclick="switchAuthTab('signin')" class="py-2 rounded-lg bg-white text-slate-900 shadow-sm transition">
-          Sign In
+        <button type="button" id="tab-user-signin" onclick="switchUserAuthTab('signin')" class="py-2 rounded-lg bg-white text-slate-900 shadow-sm transition">
+          User Sign In
         </button>
-        <button type="button" id="tab-auth-signup" onclick="switchAuthTab('signup')" class="py-2 rounded-lg text-slate-600 hover:text-slate-900 transition">
-          Register New Account
+        <button type="button" id="tab-user-signup" onclick="switchUserAuthTab('signup')" class="py-2 rounded-lg text-slate-600 hover:text-slate-900 transition">
+          Create Account
         </button>
       </div>
 
-      <!-- Scrollable Modal Body -->
       <div class="overflow-y-auto py-3 flex-1 pr-1 space-y-3">
-        
-        <!-- 1. SIGN IN TAB -->
-        <div id="view-auth-signin" class="space-y-3">
-          <div id="signin-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
-            <span class="text-base flex-shrink-0">⚠️</span>
-            <span id="signin-error-msg" class="leading-relaxed">Invalid credentials. Please verify your email and password.</span>
-          </div>
-          <div id="signin-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
-            <span class="text-base flex-shrink-0">✅</span>
-            <span id="signin-success-msg" class="leading-relaxed">Sign in successful! Entering your dashboard...</span>
-          </div>
+        <!-- Error & Success Alert Boxes -->
+        <div id="user-auth-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">⚠️</span>
+          <span id="user-auth-error-msg" class="leading-relaxed">Invalid credentials.</span>
+        </div>
+        <div id="user-auth-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">✅</span>
+          <span id="user-auth-success-msg" class="leading-relaxed">Success!</span>
+        </div>
 
-          <form id="form-auth-signin" onsubmit="handleUnifiedSignIn(event)" class="space-y-3">
+        <!-- FORM 1: Normal User Sign In -->
+        <div id="view-user-signin" class="space-y-3">
+          <form id="form-user-login" onsubmit="handleNormalUserLogin(event)" class="space-y-3">
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
               <div class="relative">
@@ -1687,7 +1679,7 @@
                 <input 
                   type="email" 
                   required 
-                  id="auth-signin-email" 
+                  id="user-login-email" 
                   placeholder="your.email@example.com" 
                   class="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
                 />
@@ -1697,7 +1689,7 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-xs font-bold text-slate-700">Password *</label>
-                <button type="button" onclick="openResetPasswordModal()" class="text-[11px] text-emerald-700 hover:text-emerald-900 hover:underline font-semibold">
+                <button type="button" onclick="openForgotPasswordModal('user')" class="text-[11px] text-emerald-700 hover:text-emerald-900 hover:underline font-semibold">
                   Forgot Password?
                 </button>
               </div>
@@ -1706,307 +1698,742 @@
                 <input 
                   type="password" 
                   required 
-                  id="auth-signin-password" 
+                  id="user-login-password" 
                   placeholder="Enter your password" 
                   class="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
                 />
                 <button 
                   type="button" 
-                  onclick="togglePasswordVisibility('auth-signin-password', this)" 
+                  onclick="togglePasswordVisibility('user-login-password', this)" 
                   class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs"
                   title="Show/Hide Password"
-                >
-                  👁️
-                </button>
+                >👁️</button>
               </div>
             </div>
 
             <div class="flex items-center justify-between pt-1">
               <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
-                <input type="checkbox" id="auth-signin-remember" checked class="rounded text-emerald-700 cursor-pointer" />
+                <input type="checkbox" id="user-login-remember" checked class="rounded text-emerald-700 cursor-pointer" />
                 <span>Remember me</span>
               </label>
-              <span class="text-[11px] text-slate-400">Secure 256-bit SSL</span>
+              <span class="text-[11px] text-slate-400">Normal User Access</span>
             </div>
 
             <button 
               type="submit" 
-              id="auth-signin-submit-btn" 
+              id="btn-user-login" 
               class="w-full bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2 border border-amber-500"
             >
-              <span id="auth-signin-spinner" class="hidden animate-spin">🔄</span>
-              <span id="auth-signin-btn-text">Sign In to SECOND SHELF</span>
+              <span id="user-login-spinner" class="hidden animate-spin">🔄</span>
+              <span id="user-login-btn-text">Sign In to User Account</span>
               <span>→</span>
             </button>
           </form>
 
-          <!-- Quick Registration Links for Partners -->
-          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
-            <div class="font-bold text-slate-800 text-[11px]">New Business Partner?</div>
-            <div class="flex flex-wrap gap-2">
-              <button onclick="switchAuthTab('signup'); switchRegType('stall')" class="text-blue-700 hover:underline font-semibold flex items-center gap-1">
-                <span>🏬</span> Register as Book Stall Owner
-              </button>
-              <span class="text-slate-300">•</span>
-              <button onclick="switchAuthTab('signup'); switchRegType('scrap')" class="text-emerald-700 hover:underline font-semibold flex items-center gap-1">
-                <span>♻️</span> Register as Scrap Business Owner
-              </button>
-            </div>
-          </div>
-
           <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
             Need a student/seller account? 
-            <button onclick="switchAuthTab('signup'); switchRegType('user')" class="text-emerald-700 font-bold hover:underline">
-              Create Normal User Account
+            <button onclick="switchUserAuthTab('signup')" class="text-emerald-700 font-bold hover:underline">
+              Create New Account
             </button>
           </div>
         </div>
 
-        <!-- 2. REGISTRATION TAB (3 SEPARATE REGISTRATION OPTIONS) -->
-        <div id="view-auth-signup" class="space-y-3 hidden">
-          
-          <!-- 3-Way Registration Type Selector -->
-          <div class="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl text-[11px] font-bold text-center border border-slate-200">
-            <button type="button" id="reg-type-user-btn" onclick="switchRegType('user')" class="py-1.5 rounded-lg bg-white text-slate-900 shadow-sm transition">
-              👤 Normal User
-            </button>
-            <button type="button" id="reg-type-stall-btn" onclick="switchRegType('stall')" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">
-              🏬 Book Stall
-            </button>
-            <button type="button" id="reg-type-scrap-btn" onclick="switchRegType('scrap')" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">
-              ♻️ Scrap Owner
-            </button>
-          </div>
-
-          <!-- Alert Messages -->
-          <div id="signup-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
-            <span class="text-base flex-shrink-0">⚠️</span>
-            <span id="signup-error-msg" class="leading-relaxed">Error creating account. Please check your details.</span>
-          </div>
-          <div id="signup-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
-            <span class="text-base flex-shrink-0">🎉</span>
-            <span id="signup-success-msg" class="leading-relaxed">Account created! Check your email to verify your address.</span>
-          </div>
-
-          <!-- OPTION A: NORMAL USER REGISTRATION FORM -->
-          <div id="form-reg-user-container">
-            <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[11px] text-blue-950 mb-3">
-              <strong>👤 Normal User Registration:</strong> Register with full name, email, password, and phone number to buy/sell used college textbooks and request doorstep paper scrap pickups.
+        <!-- FORM 2: Normal User Registration -->
+        <div id="view-user-signup" class="space-y-3 hidden">
+          <form id="form-user-signup" onsubmit="handleNormalUserSignUp(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+              <input 
+                type="text" 
+                required 
+                id="user-reg-name" 
+                placeholder="e.g. Rahul Sharma" 
+                class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" 
+              />
             </div>
 
-            <form id="form-reg-user" onsubmit="handleNormalUserSignUp(event)" class="space-y-3">
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
-                <input type="text" required id="reg-user-name" placeholder="e.g. Ramesh Kumar" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
-                  <input type="email" required id="reg-user-email" placeholder="ramesh@college.edu" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
-                  <input type="tel" required id="reg-user-phone" placeholder="+91 98765 43210" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Password *</label>
-                  <div class="relative">
-                    <input type="password" required minlength="8" id="reg-user-password" placeholder="Min 8 chars" class="w-full text-xs pl-3 pr-8 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
-                    <button type="button" onclick="togglePasswordVisibility('reg-user-password', this)" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-700 text-xs">👁️</button>
-                  </div>
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Confirm Password *</label>
-                  <div class="relative">
-                    <input type="password" required minlength="8" id="reg-user-confirm" placeholder="Re-enter password" class="w-full text-xs pl-3 pr-8 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" />
-                    <button type="button" onclick="togglePasswordVisibility('reg-user-confirm', this)" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-700 text-xs">👁️</button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-xs flex items-start gap-2">
-                <input type="checkbox" id="reg-user-age" required checked class="mt-0.5 rounded text-amber-600 cursor-pointer" />
-                <label for="reg-user-age" class="text-amber-950 text-[11px] leading-snug cursor-pointer">
-                  I confirm that I am <strong>18 years of age or older</strong> (Digital Personal Data Protection Act compliance).
-                </label>
-              </div>
-
-              <button type="submit" id="btn-reg-user" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
-                <span>Create User Account & Verify Email</span> →
-              </button>
-            </form>
-          </div>
-
-          <!-- OPTION B: BOOK STALL OWNER REGISTRATION FORM -->
-          <div id="form-reg-stall-container" class="hidden">
-            <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[11px] text-blue-950 mb-3">
-              <strong>🏬 Book Stall Owner Registration:</strong> Fill out your bookstore information. Your application will be submitted with <strong>PENDING</strong> status for Administrator review.
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+              <input 
+                type="email" 
+                required 
+                id="user-reg-email" 
+                placeholder="e.g. rahul@college.edu" 
+                class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" 
+              />
             </div>
 
-            <form id="form-reg-stall" onsubmit="handleBookStallSignUp(event)" class="space-y-3">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Owner Name *</label>
-                  <input type="text" required id="reg-stall-owner" placeholder="e.g. Rajesh Gowda" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Book Stall / Store Name *</label>
-                  <input type="text" required id="reg-stall-name" placeholder="e.g. Vidyarthi Book Bureau" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
-                  <input type="email" required id="reg-stall-email" placeholder="store@example.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
-                  <input type="tel" required id="reg-stall-phone" placeholder="+91 98450 12345" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">Business Address *</label>
-                <input type="text" required id="reg-stall-address" placeholder="Physical shop building, street & door number" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-              </div>
-
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
-                  <input type="text" required id="reg-stall-state" value="Karnataka" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">District *</label>
-                  <input type="text" required id="reg-stall-district" value="Dharwad" placeholder="e.g. Dharwad / Bengaluru" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
-                  <input type="text" required id="reg-stall-city" value="Hubli" placeholder="e.g. Hubli" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Location / Area *</label>
-                  <input type="text" required id="reg-stall-location" placeholder="e.g. Vidyanagar" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Trade / Shop Licence No. (Optional)</label>
-                  <input type="text" id="reg-stall-licence" placeholder="e.g. HBL/TRD/2026/014" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Account Password *</label>
-                  <input type="password" required minlength="8" id="reg-stall-password" placeholder="Min 8 characters" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-              </div>
-
-              <div class="bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 font-medium">
-                ⏳ <strong>Approval Notice:</strong> After submitting, your status will be set to <strong>PENDING</strong>. The Administrator will review your bookstore details before granting access to the Book Stall Owner Dashboard.
-              </div>
-
-              <button type="submit" id="btn-reg-stall" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
-                <span>Submit Book Stall Registration for Admin Review</span> →
-              </button>
-            </form>
-          </div>
-
-          <!-- OPTION C: RECYCLE & SCRAP BUSINESS OWNER REGISTRATION FORM -->
-          <div id="form-reg-scrap-container" class="hidden">
-            <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-[11px] text-amber-950 mb-3">
-              <strong>♻️ Recycle & Scrap Owner Registration:</strong> Register your paper recycling depot or scrap yard. Applications require Administrator approval before accessing the collection dashboard.
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Mobile Phone Number *</label>
+              <input 
+                type="tel" 
+                required 
+                id="user-reg-phone" 
+                placeholder="e.g. 9845012345" 
+                class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium font-mono" 
+              />
             </div>
 
-            <form id="form-reg-scrap" onsubmit="handleScrapOwnerSignUp(event)" class="space-y-3">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Owner Name *</label>
-                  <input type="text" required id="reg-scrap-owner" placeholder="e.g. Ramesh Kumar" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Business Name (Yard / Depot) *</label>
-                  <input type="text" required id="reg-scrap-name" placeholder="e.g. Karnataka Eco Recyclers" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
-                  <input type="email" required id="reg-scrap-email" placeholder="recycler@example.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
-                  <input type="tel" required id="reg-scrap-phone" placeholder="+91 98765 43210" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-              </div>
-
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">Business / Yard Address *</label>
-                <input type="text" required id="reg-scrap-address" placeholder="Physical yard or depot street location" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
-              </div>
-
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
-                  <input type="text" required id="reg-scrap-state" value="Karnataka" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">District *</label>
-                  <input type="text" required id="reg-scrap-district" value="Dharwad" placeholder="e.g. Dharwad / Belagavi" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
-                  <input type="text" required id="reg-scrap-city" value="Hubli" placeholder="e.g. Hubli" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Location / Area *</label>
-                  <input type="text" required id="reg-scrap-location" placeholder="e.g. Keshwapur Industrial" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                <label class="block text-xs font-bold text-slate-700 mb-1">Password *</label>
+                <div class="relative">
+                  <input 
+                    type="password" 
+                    required 
+                    minlength="8" 
+                    id="user-reg-password" 
+                    placeholder="Min 8 characters" 
+                    class="w-full text-xs p-2.5 pr-8 rounded-lg border border-slate-300 amazon-focus font-medium" 
+                  />
+                  <button type="button" onclick="togglePasswordVisibility('user-reg-password', this)" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 text-xs">👁️</button>
                 </div>
               </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">KSPCB / Trade Licence (Optional)</label>
-                  <input type="text" id="reg-scrap-licence" placeholder="e.g. KSPCB/WPR/2026/09" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Account Password *</label>
-                  <input type="password" required minlength="8" id="reg-scrap-password" placeholder="Min 8 characters" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Confirm Password *</label>
+                <div class="relative">
+                  <input 
+                    type="password" 
+                    required 
+                    minlength="8" 
+                    id="user-reg-confirm" 
+                    placeholder="Re-enter password" 
+                    class="w-full text-xs p-2.5 pr-8 rounded-lg border border-slate-300 amazon-focus font-medium" 
+                  />
+                  <button type="button" onclick="togglePasswordVisibility('user-reg-confirm', this)" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 text-xs">👁️</button>
                 </div>
               </div>
+            </div>
 
-              <div class="bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 font-medium">
-                ⏳ <strong>Approval Notice:</strong> After submitting, your status will be set to <strong>PENDING</strong>. The Administrator will inspect your yard details before granting access to the Scrap Business Dashboard.
-              </div>
+            <label class="flex items-start gap-2 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 cursor-pointer">
+              <input type="checkbox" required id="user-reg-age" checked class="mt-0.5 rounded text-emerald-700" />
+              <span>I confirm that I am 18 years of age or older, or authorized by my college to buy/sell study materials.</span>
+            </label>
 
-              <button type="submit" id="btn-reg-scrap" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
-                <span>Submit Scrap Business Registration for Admin Review</span> →
-              </button>
-            </form>
-          </div>
+            <button 
+              type="submit" 
+              id="btn-user-reg" 
+              class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2"
+            >
+              <span id="user-reg-spinner" class="hidden animate-spin">🔄</span>
+              <span id="user-reg-btn-text">Create Normal User Account</span>
+              <span>→</span>
+            </button>
+          </form>
 
-          <div class="text-center pt-3 border-t border-slate-200 text-xs text-slate-600">
-            Already registered? 
-            <button onclick="switchAuthTab('signin')" class="text-emerald-700 font-bold hover:underline">
-              Sign in to your account
+          <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
+            Already have an account? 
+            <button onclick="switchUserAuthTab('signin')" class="text-emerald-700 font-bold hover:underline">
+              Sign In
             </button>
           </div>
         </div>
-
       </div>
 
-      <!-- Modal Bottom Security Footer -->
       <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 flex-shrink-0">
-        <span class="flex items-center gap-1">🔒 SECOND SHELF Security & RLS</span>
-        <button onclick="closeModal('modal-auth')" class="text-slate-600 hover:text-slate-900 font-bold">
-          Close Window
+        <span>🔒 SECOND SHELF Normal User Security</span>
+        <button onclick="closeModal('modal-login-user')" class="text-slate-600 hover:text-slate-900 font-bold">Close Window</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- 2. MODAL: BOOK STALL OWNER LOGIN & REGISTRATION                     -->
+  <!-- Completely separate & isolated. Shows ONLY Stall Login & Application -->
+  <!-- ==================================================================== -->
+  <div id="modal-login-stall" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-900 border border-slate-200 max-h-[94vh] flex flex-col transition-all">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-blue-900 border border-blue-400 flex items-center justify-center text-blue-200 text-lg font-black shadow-sm">
+            🏬
+          </div>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900">Book Stall Owner Portal</h3>
+            <p class="text-[11px] text-slate-500 font-medium">Certified bookstore proprietor login & partner registration</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-login-stall')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
+      </div>
+
+      <!-- Auth Tabs: Sign In vs Register Stall -->
+      <div class="grid grid-cols-2 p-1 bg-slate-100 rounded-xl mt-3 flex-shrink-0 font-bold text-xs text-center border border-slate-200">
+        <button type="button" id="tab-stall-signin" onclick="switchStallAuthTab('signin')" class="py-2 rounded-lg bg-white text-slate-900 shadow-sm transition">
+          Stall Owner Sign In
+        </button>
+        <button type="button" id="tab-stall-signup" onclick="switchStallAuthTab('signup')" class="py-2 rounded-lg text-slate-600 hover:text-slate-900 transition">
+          Register Book Stall
         </button>
       </div>
 
+      <div class="overflow-y-auto py-3 flex-1 pr-1 space-y-3">
+        <!-- Error & Success Alert Boxes -->
+        <div id="stall-auth-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">⚠️</span>
+          <span id="stall-auth-error-msg" class="leading-relaxed">Invalid bookstore credentials.</span>
+        </div>
+        <div id="stall-auth-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">✅</span>
+          <span id="stall-auth-success-msg" class="leading-relaxed">Success!</span>
+        </div>
+
+        <!-- FORM 1: Book Stall Sign In -->
+        <div id="view-stall-signin" class="space-y-3">
+          <form id="form-stall-login" onsubmit="handleBookStallLogin(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Bookstore Registered Email *</label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">🏬</span>
+                <input 
+                  type="email" 
+                  required 
+                  id="stall-login-email" 
+                  placeholder="bookstore.owner@example.com" 
+                  class="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
+                />
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-bold text-slate-700">Password *</label>
+                <button type="button" onclick="openForgotPasswordModal('stall')" class="text-[11px] text-blue-700 hover:text-blue-900 hover:underline font-semibold">
+                  Forgot Password?
+                </button>
+              </div>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">🔒</span>
+                <input 
+                  type="password" 
+                  required 
+                  id="stall-login-password" 
+                  placeholder="Enter bookstore account password" 
+                  class="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
+                />
+                <button 
+                  type="button" 
+                  onclick="togglePasswordVisibility('stall-login-password', this)" 
+                  class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs"
+                  title="Show/Hide Password"
+                >👁️</button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+                <input type="checkbox" id="stall-login-remember" checked class="rounded text-blue-700 cursor-pointer" />
+                <span>Remember me</span>
+              </label>
+              <span class="text-[11px] text-slate-400">Book Stall Owner Clearance</span>
+            </div>
+
+            <button 
+              type="submit" 
+              id="btn-stall-login" 
+              class="w-full bg-blue-700 hover:bg-blue-800 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2"
+            >
+              <span id="stall-login-spinner" class="hidden animate-spin">🔄</span>
+              <span id="stall-login-btn-text">Sign In to Book Stall Dashboard</span>
+              <span>→</span>
+            </button>
+          </form>
+
+          <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
+            Own a bookstore and not yet registered? 
+            <button onclick="switchStallAuthTab('signup')" class="text-blue-700 font-bold hover:underline">
+              Register as Book Stall Owner
+            </button>
+          </div>
+        </div>
+
+        <!-- FORM 2: Book Stall Owner Registration -->
+        <div id="view-stall-signup" class="space-y-3 hidden">
+          <form id="form-stall-signup" onsubmit="handleBookStallSignUp(event)" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Owner Full Name *</label>
+                <input type="text" required id="reg-stall-owner" placeholder="e.g. Ramesh Kulkarni" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Book Stall Name *</label>
+                <input type="text" required id="reg-stall-name" placeholder="e.g. Vidya Book House" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                <input type="email" required id="reg-stall-email" placeholder="owner@bookstall.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                <input type="tel" required id="reg-stall-phone" placeholder="e.g. 9845012345" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium font-mono" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Physical Bookstore Address *</label>
+              <input type="text" required id="reg-stall-address" placeholder="e.g. Shop #12, College Road, Near BVB Campus" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
+                <input type="text" required id="reg-stall-state" value="Karnataka" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">District *</label>
+                <input type="text" required id="reg-stall-district" value="Dharwad" placeholder="e.g. Dharwad" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
+                <input type="text" required id="reg-stall-city" value="Hubli" placeholder="e.g. Hubli" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Shop / Trade Licence Number (Optional)</label>
+                <input type="text" id="reg-stall-licence" placeholder="e.g. HMC/TRADE/2026/88" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Account Password *</label>
+                <div class="relative">
+                  <input type="password" required minlength="8" id="reg-stall-password" placeholder="Min 8 characters" class="w-full text-xs p-2.5 pr-8 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                  <button type="button" onclick="togglePasswordVisibility('reg-stall-password', this)" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 text-xs">👁️</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 font-medium">
+              ⏳ <strong>Approval Notice:</strong> After submitting, your application will be set to <strong>PENDING</strong>. The Administrator will review your bookstore details before granting access to the Book Stall Owner Dashboard.
+            </div>
+
+            <button type="submit" id="btn-reg-stall" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
+              <span id="stall-reg-spinner" class="hidden animate-spin">🔄</span>
+              <span id="stall-reg-btn-text">Submit Book Stall Application for Admin Approval</span>
+              <span>→</span>
+            </button>
+          </form>
+
+          <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
+            Already registered? 
+            <button onclick="switchStallAuthTab('signin')" class="text-blue-700 font-bold hover:underline">
+              Sign in to Book Stall Console
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 flex-shrink-0">
+        <span>🔒 SECOND SHELF Partner Verification</span>
+        <button onclick="closeModal('modal-login-stall')" class="text-slate-600 hover:text-slate-900 font-bold">Close Window</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- 3. MODAL: RECYCLE & SCRAP OWNER LOGIN & REGISTRATION                 -->
+  <!-- Completely separate & isolated. Shows ONLY Scrap Login & Application -->
+  <!-- ==================================================================== -->
+  <div id="modal-login-scrap" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-900 border border-slate-200 max-h-[94vh] flex flex-col transition-all">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-amber-950 border border-amber-500 flex items-center justify-center text-amber-300 text-lg font-black shadow-sm">
+            ♻️
+          </div>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900">Recycle & Scrap Dealer Portal</h3>
+            <p class="text-[11px] text-slate-500 font-medium">Commercial paper recycling & scrap yard management (min 10 kg)</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-login-scrap')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
+      </div>
+
+      <!-- Auth Tabs: Sign In vs Register Scrap Business -->
+      <div class="grid grid-cols-2 p-1 bg-slate-100 rounded-xl mt-3 flex-shrink-0 font-bold text-xs text-center border border-slate-200">
+        <button type="button" id="tab-scrap-signin" onclick="switchScrapAuthTab('signin')" class="py-2 rounded-lg bg-white text-slate-900 shadow-sm transition">
+          Scrap Dealer Sign In
+        </button>
+        <button type="button" id="tab-scrap-signup" onclick="switchScrapAuthTab('signup')" class="py-2 rounded-lg text-slate-600 hover:text-slate-900 transition">
+          Register Scrap Business
+        </button>
+      </div>
+
+      <div class="overflow-y-auto py-3 flex-1 pr-1 space-y-3">
+        <!-- Error & Success Alert Boxes -->
+        <div id="scrap-auth-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">⚠️</span>
+          <span id="scrap-auth-error-msg" class="leading-relaxed">Invalid scrap dealer credentials.</span>
+        </div>
+        <div id="scrap-auth-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">✅</span>
+          <span id="scrap-auth-success-msg" class="leading-relaxed">Success!</span>
+        </div>
+
+        <!-- FORM 1: Scrap Business Sign In -->
+        <div id="view-scrap-signin" class="space-y-3">
+          <form id="form-scrap-login" onsubmit="handleScrapOwnerLogin(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Registered Scrap Business Email *</label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">♻️</span>
+                <input 
+                  type="email" 
+                  required 
+                  id="scrap-login-email" 
+                  placeholder="scrap.dealer@example.com" 
+                  class="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
+                />
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-bold text-slate-700">Password *</label>
+                <button type="button" onclick="openForgotPasswordModal('scrap')" class="text-[11px] text-amber-700 hover:text-amber-900 hover:underline font-semibold">
+                  Forgot Password?
+                </button>
+              </div>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">🔒</span>
+                <input 
+                  type="password" 
+                  required 
+                  id="scrap-login-password" 
+                  placeholder="Enter scrap depot password" 
+                  class="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
+                />
+                <button 
+                  type="button" 
+                  onclick="togglePasswordVisibility('scrap-login-password', this)" 
+                  class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs"
+                  title="Show/Hide Password"
+                >👁️</button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+                <input type="checkbox" id="scrap-login-remember" checked class="rounded text-amber-700 cursor-pointer" />
+                <span>Remember me</span>
+              </label>
+              <span class="text-[11px] text-slate-400">Scrap Dealer Clearance</span>
+            </div>
+
+            <button 
+              type="submit" 
+              id="btn-scrap-login" 
+              class="w-full bg-amber-800 hover:bg-amber-900 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2"
+            >
+              <span id="scrap-login-spinner" class="hidden animate-spin">🔄</span>
+              <span id="scrap-login-btn-text">Sign In to Scrap Business Dashboard</span>
+              <span>→</span>
+            </button>
+          </form>
+
+          <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
+            Operate a paper recycling yard? 
+            <button onclick="switchScrapAuthTab('signup')" class="text-amber-800 font-bold hover:underline">
+              Register Scrap Business
+            </button>
+          </div>
+        </div>
+
+        <!-- FORM 2: Scrap Business Owner Registration -->
+        <div id="view-scrap-signup" class="space-y-3 hidden">
+          <form id="form-scrap-signup" onsubmit="handleScrapOwnerSignUp(event)" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Owner Full Name *</label>
+                <input type="text" required id="reg-scrap-owner" placeholder="e.g. Anand Pattar" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Scrap Business Name *</label>
+                <input type="text" required id="reg-scrap-name" placeholder="e.g. Eco Paper Recyclers" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                <input type="email" required id="reg-scrap-email" placeholder="owner@ecorecyclers.in" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                <input type="tel" required id="reg-scrap-phone" placeholder="e.g. 9845012345" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium font-mono" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Scrap Yard / Depot Physical Address *</label>
+              <input type="text" required id="reg-scrap-address" placeholder="e.g. Yard #4, Industrial Estate, Gokul Road" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
+                <input type="text" required id="reg-scrap-state" value="Karnataka" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">District *</label>
+                <input type="text" required id="reg-scrap-district" value="Dharwad" placeholder="e.g. Dharwad" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
+                <input type="text" required id="reg-scrap-city" value="Hubli" placeholder="e.g. Hubli" class="w-full text-xs p-2 rounded-lg border border-slate-300 amazon-focus font-medium" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">KSPCB / Trade Licence (Optional)</label>
+                <input type="text" id="reg-scrap-licence" placeholder="e.g. KSPCB/WPR/2026/09" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-mono" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Account Password *</label>
+                <div class="relative">
+                  <input type="password" required minlength="8" id="reg-scrap-password" placeholder="Min 8 characters" class="w-full text-xs p-2.5 pr-8 rounded-lg border border-slate-300 amazon-focus font-medium" />
+                  <button type="button" onclick="togglePasswordVisibility('reg-scrap-password', this)" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 text-xs">👁️</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-amber-50 border border-amber-300 p-3 rounded-xl text-xs text-amber-950 font-medium">
+              ⏳ <strong>Approval Notice:</strong> After submitting, your status will be set to <strong>PENDING</strong>. The Administrator will inspect your yard details before granting access to the Scrap Business Dashboard.
+            </div>
+
+            <button type="submit" id="btn-reg-scrap" class="w-full bg-amber-800 hover:bg-amber-900 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2">
+              <span id="scrap-reg-spinner" class="hidden animate-spin">🔄</span>
+              <span id="scrap-reg-btn-text">Submit Scrap Business Application for Admin Approval</span>
+              <span>→</span>
+            </button>
+          </form>
+
+          <div class="text-center pt-2 border-t border-slate-200 text-xs text-slate-600">
+            Already registered scrap business? 
+            <button onclick="switchScrapAuthTab('signin')" class="text-amber-800 font-bold hover:underline">
+              Sign In to Scrap Console
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 flex-shrink-0">
+        <span>🔒 SECOND SHELF Scrap Partner Verification</span>
+        <button onclick="closeModal('modal-login-scrap')" class="text-slate-600 hover:text-slate-900 font-bold">Close Window</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- 4. MODAL: PROTECTED ADMINISTRATOR LOGIN                              -->
+  <!-- Completely separate & isolated. STRICTLY 1 Admin. No registration.   -->
+  <!-- ==================================================================== -->
+  <div id="modal-login-admin" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border-2 border-rose-300 max-h-[94vh] flex flex-col transition-all">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-rose-100 flex-shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-rose-950 border border-rose-600 flex items-center justify-center text-rose-300 text-lg font-black shadow-sm">
+            🛡️
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h3 class="text-base font-extrabold text-slate-900">Administrator Console</h3>
+              <span class="bg-rose-100 text-rose-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-rose-300">Root Access</span>
+            </div>
+            <p class="text-[11px] text-rose-800 font-medium">Restricted exclusively to platform creator</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-login-admin')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
+      </div>
+
+      <div class="overflow-y-auto py-4 flex-1 pr-1 space-y-3">
+        <!-- Error & Success Alert Boxes -->
+        <div id="admin-auth-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-900 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">⚠️</span>
+          <span id="admin-auth-error-msg" class="leading-relaxed">Access Denied: Invalid administrator credentials.</span>
+        </div>
+        <div id="admin-auth-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">✅</span>
+          <span id="admin-auth-success-msg" class="leading-relaxed">Admin Authenticated! Opening Administration Console...</span>
+        </div>
+
+        <form id="form-admin-login" onsubmit="handleMasterAdminLogin(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Designated Administrator Email *</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">✉️</span>
+              <input 
+                type="email" 
+                required 
+                id="admin-login-email" 
+                value="ganeshhonnalli07@gmail.com" 
+                readonly
+                class="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-900 cursor-not-allowed" 
+              />
+            </div>
+            <span class="text-[10px] text-slate-500 mt-1 block">Exactly ONE provisioned administrator account</span>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-bold text-slate-700">Administrator Password *</label>
+              <button type="button" onclick="openForgotPasswordModal('admin')" class="text-[11px] text-rose-700 hover:text-rose-900 hover:underline font-semibold">
+                Reset Admin Password
+              </button>
+            </div>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">🔒</span>
+              <input 
+                type="password" 
+                required 
+                id="admin-login-password" 
+                placeholder="Enter your administrator password" 
+                class="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
+              />
+              <button 
+                type="button" 
+                onclick="togglePasswordVisibility('admin-login-password', this)" 
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs"
+                title="Show/Hide Password"
+              >👁️</button>
+            </div>
+          </div>
+
+          <div class="bg-rose-50 border border-rose-200 p-3 rounded-xl text-xs text-rose-950 font-medium">
+            🛡️ <strong>Security Notice:</strong> Only <code>ganeshhonnalli07@gmail.com</code> can access the Admin Dashboard. Public admin registration is permanently disabled.
+          </div>
+
+          <button 
+            type="submit" 
+            id="btn-admin-login" 
+            class="w-full bg-rose-900 hover:bg-rose-800 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2 border border-rose-700"
+          >
+            <span id="admin-login-spinner" class="hidden animate-spin">🔄</span>
+            <span id="admin-login-btn-text">Authenticate Administrator Access</span>
+            <span>→</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="pt-3 border-t border-rose-100 flex items-center justify-between text-[11px] text-rose-700 flex-shrink-0">
+        <span>🔒 Root RLS & Database Verification</span>
+        <button onclick="closeModal('modal-login-admin')" class="text-slate-600 hover:text-slate-900 font-bold">Close Window</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- 5. MODAL: FORGOT PASSWORD                                            -->
+  <!-- ==================================================================== -->
+  <div id="modal-forgot-password" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-slate-900 border border-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🔑</span>
+          <h3 class="text-base font-bold text-slate-900">Reset Your Password</h3>
+        </div>
+        <button onclick="closeModal('modal-forgot-password')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <div class="py-4 space-y-3">
+        <div id="forgot-password-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl">
+          <span id="forgot-password-error-msg">Please enter your email.</span>
+        </div>
+        <div id="forgot-password-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl">
+          <span id="forgot-password-success-msg">Reset link dispatched!</span>
+        </div>
+
+        <p class="text-xs text-slate-600">Enter your registered email address. We will send a secure Supabase password reset link to your inbox.</p>
+
+        <form onsubmit="handleForgotPasswordSubmit(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Account Email *</label>
+            <input type="email" required id="forgot-password-email" placeholder="your.email@example.com" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium" />
+          </div>
+
+          <button type="submit" id="btn-forgot-password" class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-bold py-2.5 rounded-lg text-xs shadow transition flex items-center justify-center gap-2">
+            <span id="forgot-password-spinner" class="hidden animate-spin">🔄</span>
+            <span id="forgot-password-btn-text">Send Password Reset Link</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- 6. MODAL: POST-LOGIN LOCATION ACCESS PROMPT (Requirement 7)          -->
+  <!-- ==================================================================== -->
+  <div id="modal-post-login-location" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border-2 border-emerald-500 animate-scaleIn">
+      <div class="text-center space-y-3">
+        <div class="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-3xl shadow-inner">
+          📍
+        </div>
+        <h3 class="text-xl font-black text-slate-900">Welcome to SECOND SHELF!</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto">
+          Allow location access to discover nearby used book stalls and recycling businesses.
+        </p>
+
+        <div class="pt-4 space-y-2">
+          <button 
+            type="button" 
+            onclick="handlePostLoginLocationAllow()" 
+            class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-black py-3 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
+          >
+            <span>📍 Allow Location</span>
+          </button>
+          <button 
+            type="button" 
+            onclick="handlePostLoginLocationManual()" 
+            class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs border border-slate-300 transition"
+          >
+            Enter Location Manually
+          </button>
+        </div>
+
+        <div class="pt-2">
+          <button type="button" onclick="closeModal('modal-post-login-location')" class="text-[11px] text-slate-400 hover:text-slate-600 underline">
+            Skip for now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- 7. MODAL: ADMIN APPLICATION DETAILS REVIEW (Requirement 4 & 5)        -->
+  <!-- ==================================================================== -->
+  <div id="modal-application-details" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-900 border border-slate-200 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl" id="app-modal-icon">📋</span>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900" id="app-modal-title">Business Application Details</h3>
+            <span class="text-[10px] text-slate-500" id="app-modal-subtitle">Full partnership clearance file</span>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-application-details')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <div class="overflow-y-auto py-4 flex-1 space-y-3 text-xs" id="app-modal-content">
+        <!-- Injected dynamically by JS -->
+      </div>
+
+      <div class="pt-3 border-t border-slate-200 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-2" id="app-modal-actions">
+          <!-- Injected dynamically by JS: APPROVE & REJECT buttons -->
+        </div>
+        <button onclick="closeModal('modal-application-details')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs border">
+          Close
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2435,6 +2862,6 @@
   </div>
 
 <script src="supabase-config.js?v=1794165948831"></script>
-  <script src="app.js?v=1794336518358"></script>
+  <script src="app.js?v=20261112_auth_portals_v2"></script>
 </body>
 </html>
