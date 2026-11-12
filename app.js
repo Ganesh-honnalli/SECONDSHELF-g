@@ -1,10 +1,84 @@
+// ====================================================================
+// SECOND SHELF - CORE CONFIGURATION & APPLICATION STATE
+// ====================================================================
+
+const MASTER_ADMIN_EMAIL = 'ganeshhonnalli07@gmail.com';
+var supabase = null;
+const _supabaseLib = (typeof window !== 'undefined' && (window.supabaseLib || window.supabase)) || null;
+
+let analyticsFilters = {
+  region: 'all',
+  bizType: 'all',
+  status: 'all',
+  dateRange: 'all'
+};
+
+const state = {
+  language: 'en',
+  currentUser: null,
+  currentSession: null,
+  supabaseConfig: {
+    url: '',
+    key: '',
+    connected: false
+  },
+  valuationRules: {
+    'Like New': 30.0,
+    'Good': 30.0,
+    'Used': 20.0,
+    'Old or Damaged': 15.0
+  },
+  categories: [],
+  bookRequests: [],
+  wasteRequests: [],
+  bookOffers: [],
+  scrapOffers: [],
+  transactions: [],
+  notifications: [],
+  guidelines: [],
+  announcements: [],
+  complaints: [],
+  auditLogs: [],
+  bookStalls: [],
+  scrapOwners: [],
+  usersList: [],
+  adminLiveNotifications: [],
+  activeConversation: null,
+  activeChatSubscription: null,
+  currentConfirmingReq: null
+};
+
+// Immediate client initialization helper
+function getSupabase() {
+  if (supabase) return supabase;
+  const url = (window.SECOND_SHELF_CONFIG && window.SECOND_SHELF_CONFIG.supabaseUrl) || localStorage.getItem('SECOND_SHELF_SUPABASE_URL') || 'https://taujwlvvuxbsfqiemhgv.supabase.co';
+  const key = (window.SECOND_SHELF_CONFIG && window.SECOND_SHELF_CONFIG.supabaseAnonKey) || localStorage.getItem('SECOND_SHELF_SUPABASE_ANON_KEY') || 'sb_publishable_RoDhwATknYzsKDsQ8G4ugw_VR3elBQl';
+  const lib = (typeof window !== 'undefined' && (window.supabaseLib || window.supabase || _supabaseLib)) || null;
+  if (lib && lib.createClient && url && key) {
+    try {
+      supabase = lib.createClient(url, key);
+      if (typeof window !== 'undefined') window.supabase = supabase;
+      state.supabaseConfig = { url, key, connected: true };
+      return supabase;
+    } catch (e) {
+      console.warn('Immediate getSupabase createClient error:', e);
+    }
+  }
+  return null;
+}
+
+// Try immediate sync initialization if library is already present in head
+if (typeof window !== 'undefined') {
+  getSupabase();
+}
+
 
 // ====================================================================
 // ISOLATED AUTHENTICATION & LOGIN CONTROLLERS (Separate Login Pages)
 // ====================================================================
 
 // Real-time admin notifications storage
-state.adminLiveNotifications = state.adminLiveNotifications || [];
+// state.adminLiveNotifications initialized in core state
 
 function closeAllLoginModals() {
   ['modal-login-user', 'modal-login-stall', 'modal-login-scrap', 'modal-login-admin', 'modal-auth'].forEach(id => {
@@ -150,6 +224,7 @@ function openForgotPasswordModal(portal = 'user') {
 }
 
 async function handleForgotPasswordSubmit(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const email = document.getElementById('forgot-password-email')?.value?.trim();
   const spinner = document.getElementById('forgot-password-spinner');
@@ -234,6 +309,7 @@ async function syncUserRole(userId, newRole, isApproved = true) {
 // ====================================================================
 
 async function handleNormalUserLogin(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const email = document.getElementById('user-login-email')?.value?.trim();
   const password = document.getElementById('user-login-password')?.value;
@@ -300,6 +376,7 @@ async function handleNormalUserLogin(event) {
 }
 
 async function handleNormalUserSignUp(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const name = document.getElementById('user-reg-name')?.value?.trim();
   const email = document.getElementById('user-reg-email')?.value?.trim();
@@ -415,6 +492,7 @@ async function handleNormalUserSignUp(event) {
 // ====================================================================
 
 async function handleBookStallLogin(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const email = document.getElementById('stall-login-email')?.value?.trim();
   const password = document.getElementById('stall-login-password')?.value;
@@ -502,6 +580,7 @@ async function handleBookStallLogin(event) {
 }
 
 async function handleBookStallSignUp(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const ownerName = document.getElementById('reg-stall-owner')?.value?.trim();
   const stallName = document.getElementById('reg-stall-name')?.value?.trim();
@@ -645,6 +724,7 @@ async function handleBookStallSignUp(event) {
 // ====================================================================
 
 async function handleScrapOwnerLogin(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const email = document.getElementById('scrap-login-email')?.value?.trim();
   const password = document.getElementById('scrap-login-password')?.value;
@@ -731,6 +811,7 @@ async function handleScrapOwnerLogin(event) {
 }
 
 async function handleScrapOwnerSignUp(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const ownerName = document.getElementById('reg-scrap-owner')?.value?.trim();
   const bizName = document.getElementById('reg-scrap-name')?.value?.trim();
@@ -875,6 +956,7 @@ async function handleScrapOwnerSignUp(event) {
 // ====================================================================
 
 async function handleMasterAdminLogin(event) {
+  if (!supabase) getSupabase();
   if (event) event.preventDefault();
   const email = MASTER_ADMIN_EMAIL;
   const password = document.getElementById('admin-login-password')?.value;
@@ -925,6 +1007,7 @@ async function handleMasterAdminLogin(event) {
       if (submitBtn) submitBtn.disabled = false;
 
       showSection('dashboard');
+      renderCurrentDashboard();
       setAdminTab('approvals');
       showToast('Welcome, Administrator Ganesh Honnalli', 'success');
     }, 600);
@@ -1332,16 +1415,11 @@ function getBusinessLocation(b) {
 // ====================================================================
 // PERMANENT MASTER ADMINISTRATOR CONFIGURATION
 // ====================================================================
-const MASTER_ADMIN_EMAIL = 'ganeshhonnalli07@gmail.com';
+// (MASTER_ADMIN_EMAIL hoisted to top)
 
 
 // Regional Sales Analytics Filter State
-let analyticsFilters = {
-  region: 'all',
-  bizType: 'all',
-  status: 'all',
-  dateRange: 'all'
-};
+// (analyticsFilters hoisted to top)
 
 function setAnalyticsFilter(key, value) {
   analyticsFilters[key] = value;
@@ -2102,44 +2180,7 @@ function updateHeroLiveStats() {
   if (elPartners) elPartners.textContent = partnersCount > 0 ? partnersCount.toString() : '0';
 }
 
-const state = {
-  language: 'en', // 'en' | 'kn'
-  currentUser: null, // Initial state: unauthenticated
-  currentSession: null,
-  supabaseConfig: {
-    url: '',
-    key: '',
-    connected: false
-  },
-  valuationRules: {
-    'Like New': 30.0,
-    'Good': 30.0,
-    'Used': 20.0,
-    'Old or Damaged': 15.0
-  },
-  categories: [],
-  bookRequests: [],
-  wasteRequests: [],
-  bookOffers: [],
-  scrapOffers: [],
-  transactions: [],
-  notifications: [],
-  guidelines: [],
-  announcements: [],
-  complaints: [],
-  auditLogs: [],
-  bookStalls: [],
-  scrapOwners: [],
-  usersList: [],
-  activeConversation: null,
-  activeChatSubscription: null,
-  currentConfirmingReq: null
-};
-
-// Global Supabase Client instance
-// Global Supabase Client instance (distinct from window.supabase library)
-var supabase = null;
-const _supabaseLib = (typeof window !== 'undefined' && (window.supabaseLib || window.supabase)) || null;
+// (state, supabase, _supabaseLib hoisted to top)
 
 // Kannada & English Language Translations Map
 const TRANSLATIONS = {
