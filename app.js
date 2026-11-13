@@ -433,19 +433,35 @@ async function handleNormalUserSignUp(event) {
   if (submitBtn) submitBtn.disabled = true;
 
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: name,
-          phone: phone,
-          role: 'seller'
-        }
+    let registeredViaApi = false;
+    try {
+      const apiRes = await fetch('/api/register-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone, password })
+      });
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        if (json.success) registeredViaApi = true;
       }
-    });
+    } catch (e) {}
 
-    if (error) throw error;
+    let data = null;
+    if (!registeredViaApi) {
+      const res = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+            phone: phone,
+            role: 'seller'
+          }
+        }
+      });
+      if (res.error) throw res.error;
+      data = res.data;
+    }
 
     if (data.user) {
       try {
@@ -522,7 +538,33 @@ async function handleBookStallLogin(event) {
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) {
+      if (email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
+        throw new Error('Invalid credentials for ' + email + '. Note: This is the Administrator account. Please enter your Administrator password or click "Admin Login" in the header.');
+      }
+      throw error;
+    }
+
+    // If Master Administrator signs in here, seamlessly open the Admin Dashboard
+    if (data.user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
+      if (succBox && succMsg) {
+        succMsg.textContent = 'Administrator account verified! Opening Administrator Console...';
+        succBox.classList.remove('hidden');
+      }
+      await resolveUserProfile(data.user);
+      state.currentUser.role = 'admin';
+      setTimeout(() => {
+        closeModal('modal-login-stall');
+        if (spinner) spinner.classList.add('hidden');
+        if (btnText) btnText.textContent = 'Sign In to Book Stall Dashboard';
+        if (submitBtn) submitBtn.disabled = false;
+        showSection('dashboard');
+        renderCurrentDashboard();
+        setAdminTab('approvals');
+        showToast('Welcome, Administrator Ganesh Honnalli', 'success');
+      }, 600);
+      return;
+    }
 
     // Check approval status in book_stalls
     const { data: stall } = await supabase
@@ -532,9 +574,8 @@ async function handleBookStallLogin(event) {
       .maybeSingle();
 
     if (!stall) {
-      // User registered as normal user, not a bookstore
       await supabase.auth.signOut();
-      throw new Error('Account Mismatch: No bookstore registration found for this email. Please register as a Book Stall Owner first.');
+      throw new Error('Account Mismatch: No bookstore registration found for ' + email + '. Please register as a Book Stall Owner or sign in with your registered stall email.');
     }
 
     if (stall.approval_status === 'pending') {
@@ -625,19 +666,40 @@ async function handleBookStallSignUp(event) {
   if (submitBtn) submitBtn.disabled = true;
 
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: ownerName,
-          phone: phone,
-          role: 'seller'
-        }
+    let registeredViaApi = false;
+    try {
+      const apiRes = await fetch('/api/register-stall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerName, stallName, email, phone, address, stateVal, district, city, licence, password
+        })
+      });
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        if (json.success) registeredViaApi = true;
       }
-    });
+    } catch (e) {}
 
-    if (error) throw error;
+    let data = null;
+    if (!registeredViaApi) {
+      const res = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: ownerName,
+            phone: phone,
+            role: 'seller',
+            business_type: 'book_stall',
+            stall_name: stallName,
+            address: `${address} | City: ${city} | District: ${district} | State: ${stateVal}`
+          }
+        }
+      });
+      if (res.error) throw res.error;
+      data = res.data;
+    }
 
     const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
 
@@ -698,6 +760,11 @@ async function handleBookStallSignUp(event) {
     }
 
     showToast('Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
+    setTimeout(() => {
+      switchStallAuthTab('signin');
+      const stallEmailInp = document.getElementById('stall-login-email');
+      if (stallEmailInp) stallEmailInp.value = email;
+    }, 1800);
 
     setTimeout(() => {
       switchStallAuthTab('signin');
@@ -754,7 +821,32 @@ async function handleScrapOwnerLogin(event) {
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) {
+      if (email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
+        throw new Error('Invalid credentials for ' + email + '. Note: This is the Administrator account. Please enter your Administrator password or click "Admin Login" in the header.');
+      }
+      throw error;
+    }
+
+    if (data.user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
+      if (succBox && succMsg) {
+        succMsg.textContent = 'Administrator account verified! Opening Administrator Console...';
+        succBox.classList.remove('hidden');
+      }
+      await resolveUserProfile(data.user);
+      state.currentUser.role = 'admin';
+      setTimeout(() => {
+        closeModal('modal-login-scrap');
+        if (spinner) spinner.classList.add('hidden');
+        if (btnText) btnText.textContent = 'Sign In to Scrap Business Dashboard';
+        if (submitBtn) submitBtn.disabled = false;
+        showSection('dashboard');
+        renderCurrentDashboard();
+        setAdminTab('approvals');
+        showToast('Welcome, Administrator Ganesh Honnalli', 'success');
+      }, 600);
+      return;
+    }
 
     // Check approval status in scrap_owners
     const { data: scrap } = await supabase
@@ -765,7 +857,7 @@ async function handleScrapOwnerLogin(event) {
 
     if (!scrap) {
       await supabase.auth.signOut();
-      throw new Error('Account Mismatch: No scrap business registration found for this email. Please register as a Scrap Business Owner first.');
+      throw new Error('Account Mismatch: No scrap business registration found for ' + email + '. Please register as a Scrap Business Owner or sign in with your registered scrap email.');
     }
 
     if (scrap.approval_status === 'pending') {
@@ -856,19 +948,40 @@ async function handleScrapOwnerSignUp(event) {
   if (submitBtn) submitBtn.disabled = true;
 
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: ownerName,
-          phone: phone,
-          role: 'seller'
-        }
+    let registeredViaApi = false;
+    try {
+      const apiRes = await fetch('/api/register-scrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerName, bizName, email, phone, address, stateVal, district, city, licence, password
+        })
+      });
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        if (json.success) registeredViaApi = true;
       }
-    });
+    } catch (e) {}
 
-    if (error) throw error;
+    let data = null;
+    if (!registeredViaApi) {
+      const res = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: ownerName,
+            phone: phone,
+            role: 'seller',
+            business_type: 'scrap_depot',
+            biz_name: bizName,
+            address: `${address} | City: ${city} | District: ${district} | State: ${stateVal}`
+          }
+        }
+      });
+      if (res.error) throw res.error;
+      data = res.data;
+    }
 
     const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
 
@@ -930,6 +1043,11 @@ async function handleScrapOwnerSignUp(event) {
     }
 
     showToast('Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
+    setTimeout(() => {
+      switchScrapAuthTab('signin');
+      const scrapEmailInp = document.getElementById('scrap-login-email');
+      if (scrapEmailInp) scrapEmailInp.value = email;
+    }, 1800);
 
     setTimeout(() => {
       switchScrapAuthTab('signin');
