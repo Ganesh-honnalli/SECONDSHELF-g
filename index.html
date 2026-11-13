@@ -1736,6 +1736,12 @@
               Create New Account
             </button>
           </div>
+          <div class="text-center pt-1 text-[11px] text-slate-500">
+            Haven't received your activation link? 
+            <button type="button" onclick="openResendVerificationModal('user')" class="text-emerald-700 font-bold hover:underline">
+              Resend verification email
+            </button>
+          </div>
         </div>
 
         <!-- FORM 2: Normal User Registration -->
@@ -1945,6 +1951,12 @@
               Register as Book Stall Owner
             </button>
           </div>
+          <div class="text-center pt-1 text-[11px] text-slate-500">
+            Haven't received your activation link? 
+            <button type="button" onclick="openResendVerificationModal('stall')" class="text-blue-700 font-bold hover:underline">
+              Resend verification email
+            </button>
+          </div>
         </div>
 
         <!-- FORM 2: Book Stall Owner Registration -->
@@ -2139,6 +2151,12 @@
             Operate a paper recycling yard? 
             <button onclick="switchScrapAuthTab('signup')" class="text-amber-800 font-bold hover:underline">
               Register Scrap Business
+            </button>
+          </div>
+          <div class="text-center pt-1 text-[11px] text-slate-500">
+            Haven't received your activation link? 
+            <button type="button" onclick="openResendVerificationModal('scrap')" class="text-amber-800 font-bold hover:underline">
+              Resend verification email
             </button>
           </div>
         </div>
@@ -2367,6 +2385,61 @@
   </div>
 
   <!-- ==================================================================== -->
+  
+  <!-- ==================================================================== -->
+  <!-- 5B. MODAL: RESEND EMAIL VERIFICATION (Cooldown & Rate-Limit Protected) -->
+  <!-- ==================================================================== -->
+  <div id="modal-resend-verification" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-slate-900 border border-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">✉️</span>
+          <h3 class="text-base font-bold text-slate-900">Resend Activation Email</h3>
+        </div>
+        <button onclick="closeModal('modal-resend-verification')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <div class="py-4 space-y-3">
+        <div id="resend-verification-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl leading-relaxed">
+          <span id="resend-verification-error-msg">Please enter your registered email.</span>
+        </div>
+        <div id="resend-verification-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-3 rounded-xl leading-relaxed">
+          <span id="resend-verification-success-msg">Verification email sent! Check your inbox.</span>
+        </div>
+
+        <p class="text-xs text-slate-600 leading-relaxed">
+          Enter your registered email address. We will dispatch a fresh account activation link. Please also check your spam or junk folder.
+        </p>
+
+        <form id="form-resend-verification" onsubmit="handleResendVerificationSubmit(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Registered Account Email *</label>
+            <input 
+              type="email" 
+              required 
+              id="resend-verification-email" 
+              placeholder="your.email@example.com" 
+              class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900" 
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            id="btn-resend-verification" 
+            class="w-full bg-shelf-forest hover:bg-shelf-emerald text-white font-bold py-2.5 rounded-lg text-xs shadow transition flex items-center justify-center gap-2"
+          >
+            <span id="resend-verification-spinner" class="hidden animate-spin">🔄</span>
+            <span id="resend-verification-btn-text">Resend Verification Email</span>
+          </button>
+        </form>
+
+        <div id="resend-cooldown-info" class="hidden text-center text-[11px] text-amber-700 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200">
+          ⏳ Please wait <span id="resend-cooldown-timer" class="font-bold">60</span>s before requesting another verification email.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 6. MODAL: POST-LOGIN LOCATION ACCESS PROMPT (Requirement 7)          -->
   <!-- ==================================================================== -->
   <div id="modal-post-login-location" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
@@ -2986,6 +3059,6 @@
   </div>
 
 <script src="supabase-config.js?v=1794165948831"></script>
-  <script src="app.js?v=20261113_suggestion_box_v5"></script>
+  <script src="app.js?v=20261113_rate_limit_fix_v6"></script>
 </body>
 </html>

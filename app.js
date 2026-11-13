@@ -426,6 +426,196 @@ async function syncUserRole(userId, newRole, isApproved = true) {
   }
 }
 
+
+// ====================================================================
+// AUTHENTICATION RATE-LIMIT & EMAIL VERIFICATION UTILITIES
+// ====================================================================
+
+let isAuthSubmitting = false;
+let activeCooldownTimers = {};
+
+function formatAuthErrorMessage(err) {
+  if (!err) return 'An unexpected error occurred. Please try again.';
+  const msg = (err.message || '').toLowerCase();
+  const code = err.code || '';
+  const status = err.status || 0;
+
+  if (code === 'over_email_send_rate_limit' || msg.includes('rate limit') || status === 429) {
+    return '⏳ Too many verification requests. Supabase email rate limit reached. Please wait 60 seconds before trying again, or check your spam/junk folder for your activation email.';
+  }
+  if (msg.includes('user already registered') || code === 'user_already_exists') {
+    return 'An account with this email already exists. Please sign in or use Forgot Password to regain access.';
+  }
+  if (msg.includes('invalid login credentials')) {
+    return 'Invalid email or password. If you recently registered, please ensure you have verified your email first.';
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'Your email address is not verified yet. Please check your inbox (and spam folder) for the verification link.';
+  }
+  return err.message || 'Authentication error. Please try again.';
+}
+
+function startButtonCooldown(btnId, textId, defaultText, seconds = 60) {
+  const btn = document.getElementById(btnId);
+  const textEl = document.getElementById(textId);
+  if (!btn) return;
+
+  if (activeCooldownTimers[btnId]) {
+    clearInterval(activeCooldownTimers[btnId]);
+  }
+
+  btn.disabled = true;
+  let remaining = seconds;
+
+  if (textEl) textEl.textContent = `Please wait (${remaining}s) ⏳`;
+
+  activeCooldownTimers[btnId] = setInterval(() => {
+    remaining--;
+    if (remaining > 0) {
+      if (textEl) textEl.textContent = `Please wait (${remaining}s) ⏳`;
+    } else {
+      clearInterval(activeCooldownTimers[btnId]);
+      delete activeCooldownTimers[btnId];
+      btn.disabled = false;
+      if (textEl) textEl.textContent = defaultText;
+    }
+  }, 1000);
+}
+
+// Resend Verification Email Controller
+function openResendVerificationModal(portal = 'user', initialMsg = '') {
+  let emailVal = '';
+  if (portal === 'stall') emailVal = document.getElementById('stall-login-email')?.value || document.getElementById('reg-stall-email')?.value || '';
+  else if (portal === 'scrap') emailVal = document.getElementById('scrap-login-email')?.value || document.getElementById('reg-scrap-email')?.value || '';
+  else emailVal = document.getElementById('user-login-email')?.value || document.getElementById('user-reg-email')?.value || '';
+
+  const emailInput = document.getElementById('resend-verification-email');
+  if (emailInput && emailVal) emailInput.value = emailVal;
+
+  const errBox = document.getElementById('resend-verification-error-box');
+  const errMsg = document.getElementById('resend-verification-error-msg');
+  const succBox = document.getElementById('resend-verification-success-box');
+
+  if (succBox) succBox.classList.add('hidden');
+  if (initialMsg && errBox && errMsg) {
+    errMsg.textContent = initialMsg;
+    errBox.classList.remove('hidden');
+  } else if (errBox) {
+    errBox.classList.add('hidden');
+  }
+
+  document.getElementById('modal-resend-verification')?.classList.remove('hidden');
+}
+
+async function handleResendVerificationSubmit(event) {
+  if (event) event.preventDefault();
+  if (!supabase) getSupabase();
+
+  const email = document.getElementById('resend-verification-email')?.value?.trim();
+  const errBox = document.getElementById('resend-verification-error-box');
+  const errMsg = document.getElementById('resend-verification-error-msg');
+  const succBox = document.getElementById('resend-verification-success-box');
+  const succMsg = document.getElementById('resend-verification-success-msg');
+  const spinner = document.getElementById('resend-verification-spinner');
+  const btnText = document.getElementById('resend-verification-btn-text');
+  const submitBtn = document.getElementById('btn-resend-verification');
+  const cooldownInfo = document.getElementById('resend-cooldown-info');
+  const cooldownTimer = document.getElementById('resend-cooldown-timer');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!email) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter your registered email address.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Dispatching Link...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        emailRedirectTo: window.location.origin + window.location.pathname
+      }
+    });
+
+    if (error) throw error;
+
+    if (succBox && succMsg) {
+      succMsg.textContent = 'Fresh verification email dispatched to ' + email + '! Please check your inbox and spam folder.';
+      succBox.classList.remove('hidden');
+    }
+    showToast('Verification email sent! Please check your inbox.', 'success');
+
+    // Enforce 60-second cooldown
+    startButtonCooldown('btn-resend-verification', 'resend-verification-btn-text', 'Resend Verification Email', 60);
+
+    if (cooldownInfo && cooldownTimer) {
+      cooldownInfo.classList.remove('hidden');
+      let cd = 60;
+      cooldownTimer.textContent = cd;
+      const t = setInterval(() => {
+        cd--;
+        if (cd > 0) {
+          cooldownTimer.textContent = cd;
+        } else {
+          clearInterval(t);
+          cooldownInfo.classList.add('hidden');
+        }
+      }, 1000);
+    }
+
+  } catch (err) {
+    const friendly = formatAuthErrorMessage(err);
+    if (errBox && errMsg) {
+      errMsg.textContent = friendly;
+      errBox.classList.remove('hidden');
+    }
+    if (err.message && (err.message.includes('rate limit') || err.status === 429)) {
+      startButtonCooldown('btn-resend-verification', 'resend-verification-btn-text', 'Resend Verification Email', 60);
+    }
+  } finally {
+    if (spinner) spinner.classList.add('hidden');
+    if (!activeCooldownTimers['btn-resend-verification']) {
+      if (btnText) btnText.textContent = 'Resend Verification Email';
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+}
+
+// URL Hash Callback Inspector for expired / invalid links
+function inspectAuthRedirect() {
+  const hash = window.location.hash;
+  if (!hash) return;
+
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const error = params.get('error');
+  const errorCode = params.get('error_code');
+  const errorDesc = params.get('error_description');
+
+  if (error || errorCode) {
+    console.warn('Auth redirect error detected in URL hash:', errorCode, errorDesc);
+    let userMsg = '⚠️ Your email verification link has expired or is invalid. Please request a new activation link below.';
+    if (errorCode === 'otp_expired' || (errorDesc && errorDesc.toLowerCase().includes('expired'))) {
+      userMsg = '⚠️ Your verification link has expired. Enter your email below to receive a fresh activation link.';
+    }
+    showToast('Verification link expired or invalid.', 'error');
+    openResendVerificationModal('user', userMsg);
+
+    // Clean address bar
+    try {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    } catch (e) {}
+  }
+}
+
 // 1. NORMAL USER AUTHENTICATION HANDLERS
 // ====================================================================
 
@@ -488,9 +678,12 @@ async function handleNormalUserLogin(event) {
     if (btnText) btnText.textContent = 'Sign In to User Account';
     if (submitBtn) submitBtn.disabled = false;
     if (errBox && errMsg) {
-      errMsg.textContent = err.message.includes('Invalid login credentials') 
-        ? 'Invalid email or password. Please verify your credentials.' 
-        : err.message;
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('email not confirmed')) {
+        errMsg.innerHTML = '⚠️ Your email is not verified yet. Please check your inbox (and spam folder) for the activation link, or <button type="button" onclick="openResendVerificationModal(\'user\')" class="font-bold underline text-emerald-800 ml-1">Resend verification email</button>.';
+      } else {
+        errMsg.textContent = formatAuthErrorMessage(err);
+      }
       errBox.classList.remove('hidden');
     }
   }
@@ -499,6 +692,12 @@ async function handleNormalUserLogin(event) {
 async function handleNormalUserSignUp(event) {
   if (!supabase) getSupabase();
   if (event) event.preventDefault();
+
+  if (isAuthSubmitting) {
+    console.warn('Registration request already in progress.');
+    return;
+  }
+
   const name = document.getElementById('user-reg-name')?.value?.trim();
   const email = document.getElementById('user-reg-email')?.value?.trim();
   const phone = document.getElementById('user-reg-phone')?.value?.trim();
@@ -549,6 +748,7 @@ async function handleNormalUserSignUp(event) {
     return;
   }
 
+  isAuthSubmitting = true;
   if (spinner) spinner.classList.remove('hidden');
   if (btnText) btnText.textContent = 'Creating Account...';
   if (submitBtn) submitBtn.disabled = true;
@@ -573,6 +773,7 @@ async function handleNormalUserSignUp(event) {
         email,
         password,
         options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
           data: {
             full_name: name,
             phone: phone,
@@ -584,7 +785,7 @@ async function handleNormalUserSignUp(event) {
       data = res.data;
     }
 
-    if (data.user) {
+    if (data && data.user) {
       try {
         await supabase.from('profiles').upsert([{
           id: data.user.id,
@@ -599,27 +800,34 @@ async function handleNormalUserSignUp(event) {
     }
 
     if (succBox && succMsg) {
-      succMsg.textContent = 'Normal User Account created! Verification email dispatched to ' + email + '. You can now sign in.';
+      succMsg.innerHTML = '<strong>Account Created!</strong> Verification email sent successfully. Please check your inbox (and spam folder) for the activation link before signing in.';
       succBox.classList.remove('hidden');
     }
-    showToast('Registration successful! Please sign in.', 'success');
+    showToast('Verification email sent! Please check your inbox.', 'success');
 
     setTimeout(() => {
       switchUserAuthTab('signin');
       const emailInput = document.getElementById('user-login-email');
       if (emailInput) emailInput.value = email;
-      if (spinner) spinner.classList.add('hidden');
-      if (btnText) btnText.textContent = 'Create Normal User Account';
-      if (submitBtn) submitBtn.disabled = false;
-    }, 1500);
+    }, 2000);
 
   } catch (err) {
-    if (spinner) spinner.classList.add('hidden');
-    if (btnText) btnText.textContent = 'Create Normal User Account';
-    if (submitBtn) submitBtn.disabled = false;
+    const friendlyMsg = formatAuthErrorMessage(err);
     if (errBox && errMsg) {
-      errMsg.textContent = err.message || 'Error creating user account.';
+      errMsg.innerHTML = friendlyMsg;
       errBox.classList.remove('hidden');
+    }
+    showToast(friendlyMsg, 'error');
+
+    if (err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit')) || err.code === 'over_email_send_rate_limit') {
+      startButtonCooldown('btn-user-reg', 'user-reg-btn-text', 'Create Normal User Account', 60);
+    }
+  } finally {
+    isAuthSubmitting = false;
+    if (spinner) spinner.classList.add('hidden');
+    if (!activeCooldownTimers['btn-user-reg']) {
+      if (btnText) btnText.textContent = 'Create Normal User Account';
+      if (submitBtn) submitBtn.disabled = false;
     }
   }
 }
@@ -735,7 +943,12 @@ async function handleBookStallLogin(event) {
     if (btnText) btnText.textContent = 'Sign In to Book Stall Dashboard';
     if (submitBtn) submitBtn.disabled = false;
     if (errBox && errMsg) {
-      errMsg.textContent = err.message || 'Error signing in to bookstore account.';
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('email not confirmed')) {
+        errMsg.innerHTML = '⚠️ Your email is not verified yet. Please check your inbox (and spam folder) for the activation link, or <button type="button" onclick="openResendVerificationModal(\'stall\')" class="font-bold underline text-blue-800 ml-1">Resend verification email</button>.';
+      } else {
+        errMsg.textContent = formatAuthErrorMessage(err);
+      }
       errBox.classList.remove('hidden');
     }
   }
@@ -744,6 +957,12 @@ async function handleBookStallLogin(event) {
 async function handleBookStallSignUp(event) {
   if (!supabase) getSupabase();
   if (event) event.preventDefault();
+
+  if (isAuthSubmitting) {
+    console.warn('Stall registration request already in progress.');
+    return;
+  }
+
   const ownerName = document.getElementById('reg-stall-owner')?.value?.trim();
   const stallName = document.getElementById('reg-stall-name')?.value?.trim();
   const email = document.getElementById('reg-stall-email')?.value?.trim();
@@ -782,6 +1001,7 @@ async function handleBookStallSignUp(event) {
     return;
   }
 
+  isAuthSubmitting = true;
   if (spinner) spinner.classList.remove('hidden');
   if (btnText) btnText.textContent = 'Submitting Application...';
   if (submitBtn) submitBtn.disabled = true;
@@ -808,6 +1028,7 @@ async function handleBookStallSignUp(event) {
         email,
         password,
         options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
           data: {
             full_name: ownerName,
             phone: phone,
@@ -824,7 +1045,7 @@ async function handleBookStallSignUp(event) {
 
     const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
 
-    if (data.user) {
+    if (data && data.user) {
       try {
         await supabase.from('profiles').upsert([{
           id: data.user.id,
@@ -838,7 +1059,7 @@ async function handleBookStallSignUp(event) {
       } catch (e) {}
 
       try {
-        await supabase.from('book_stalls').insert([{
+        await supabase.from('book_stalls').upsert([{
           user_id: data.user.id,
           stall_name: stallName,
           owner_name: ownerName,
@@ -876,33 +1097,35 @@ async function handleBookStallSignUp(event) {
     }
 
     if (succBox && succMsg) {
-      succMsg.innerHTML = '<strong>Application Submitted!</strong> Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.';
+      succMsg.innerHTML = '<strong>Application Submitted!</strong> Verification email dispatched to <strong>' + email + '</strong>.<br/>Please check your inbox (and spam folder) to activate your account. Your Book Stall application is waiting for administrator approval.';
       succBox.classList.remove('hidden');
     }
 
     showToast('Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
+
     setTimeout(() => {
       switchStallAuthTab('signin');
       const stallEmailInp = document.getElementById('stall-login-email');
       if (stallEmailInp) stallEmailInp.value = email;
-    }, 1800);
-
-    setTimeout(() => {
-      switchStallAuthTab('signin');
-      const emailInput = document.getElementById('stall-login-email');
-      if (emailInput) emailInput.value = email;
-      if (spinner) spinner.classList.add('hidden');
-      if (btnText) btnText.textContent = 'Submit Book Stall Application for Admin Approval';
-      if (submitBtn) submitBtn.disabled = false;
-    }, 2000);
+    }, 2500);
 
   } catch (err) {
-    if (spinner) spinner.classList.add('hidden');
-    if (btnText) btnText.textContent = 'Submit Book Stall Application for Admin Approval';
-    if (submitBtn) submitBtn.disabled = false;
+    const friendlyMsg = formatAuthErrorMessage(err);
     if (errBox && errMsg) {
-      errMsg.textContent = err.message || 'Error submitting bookstore application.';
+      errMsg.innerHTML = friendlyMsg;
       errBox.classList.remove('hidden');
+    }
+    showToast(friendlyMsg, 'error');
+
+    if (err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit')) || err.code === 'over_email_send_rate_limit') {
+      startButtonCooldown('btn-reg-stall', 'stall-reg-btn-text', 'Submit Book Stall Application for Admin Approval', 60);
+    }
+  } finally {
+    isAuthSubmitting = false;
+    if (spinner) spinner.classList.add('hidden');
+    if (!activeCooldownTimers['btn-reg-stall']) {
+      if (btnText) btnText.textContent = 'Submit Book Stall Application for Admin Approval';
+      if (submitBtn) submitBtn.disabled = false;
     }
   }
 }
@@ -1017,7 +1240,12 @@ async function handleScrapOwnerLogin(event) {
     if (btnText) btnText.textContent = 'Sign In to Scrap Business Dashboard';
     if (submitBtn) submitBtn.disabled = false;
     if (errBox && errMsg) {
-      errMsg.textContent = err.message || 'Error signing in to scrap business account.';
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('email not confirmed')) {
+        errMsg.innerHTML = '⚠️ Your email is not verified yet. Please check your inbox (and spam folder) for the activation link, or <button type="button" onclick="openResendVerificationModal(\'scrap\')" class="font-bold underline text-amber-900 ml-1">Resend verification email</button>.';
+      } else {
+        errMsg.textContent = formatAuthErrorMessage(err);
+      }
       errBox.classList.remove('hidden');
     }
   }
@@ -1026,6 +1254,12 @@ async function handleScrapOwnerLogin(event) {
 async function handleScrapOwnerSignUp(event) {
   if (!supabase) getSupabase();
   if (event) event.preventDefault();
+
+  if (isAuthSubmitting) {
+    console.warn('Scrap registration request already in progress.');
+    return;
+  }
+
   const ownerName = document.getElementById('reg-scrap-owner')?.value?.trim();
   const bizName = document.getElementById('reg-scrap-name')?.value?.trim();
   const email = document.getElementById('reg-scrap-email')?.value?.trim();
@@ -1064,6 +1298,7 @@ async function handleScrapOwnerSignUp(event) {
     return;
   }
 
+  isAuthSubmitting = true;
   if (spinner) spinner.classList.remove('hidden');
   if (btnText) btnText.textContent = 'Submitting Application...';
   if (submitBtn) submitBtn.disabled = true;
@@ -1090,6 +1325,7 @@ async function handleScrapOwnerSignUp(event) {
         email,
         password,
         options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
           data: {
             full_name: ownerName,
             phone: phone,
@@ -1106,7 +1342,7 @@ async function handleScrapOwnerSignUp(event) {
 
     const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
 
-    if (data.user) {
+    if (data && data.user) {
       try {
         await supabase.from('profiles').upsert([{
           id: data.user.id,
@@ -1120,7 +1356,7 @@ async function handleScrapOwnerSignUp(event) {
       } catch (e) {}
 
       try {
-        await supabase.from('scrap_owners').insert([{
+        await supabase.from('scrap_owners').upsert([{
           user_id: data.user.id,
           business_name: bizName,
           owner_name: ownerName,
@@ -1159,40 +1395,38 @@ async function handleScrapOwnerSignUp(event) {
     }
 
     if (succBox && succMsg) {
-      succMsg.innerHTML = '<strong>Application Submitted!</strong> Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.';
+      succMsg.innerHTML = '<strong>Application Submitted!</strong> Verification email dispatched to <strong>' + email + '</strong>.<br/>Please check your inbox (and spam folder) to activate your account. Your Scrap Business application is waiting for administrator approval.';
       succBox.classList.remove('hidden');
     }
 
     showToast('Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
+
     setTimeout(() => {
       switchScrapAuthTab('signin');
       const scrapEmailInp = document.getElementById('scrap-login-email');
       if (scrapEmailInp) scrapEmailInp.value = email;
-    }, 1800);
-
-    setTimeout(() => {
-      switchScrapAuthTab('signin');
-      const emailInput = document.getElementById('scrap-login-email');
-      if (emailInput) emailInput.value = email;
-      if (spinner) spinner.classList.add('hidden');
-      if (btnText) btnText.textContent = 'Submit Scrap Business Application for Admin Approval';
-      if (submitBtn) submitBtn.disabled = false;
-    }, 2000);
+    }, 2500);
 
   } catch (err) {
-    if (spinner) spinner.classList.add('hidden');
-    if (btnText) btnText.textContent = 'Submit Scrap Business Application for Admin Approval';
-    if (submitBtn) submitBtn.disabled = false;
+    const friendlyMsg = formatAuthErrorMessage(err);
     if (errBox && errMsg) {
-      errMsg.textContent = err.message || 'Error submitting scrap business application.';
+      errMsg.innerHTML = friendlyMsg;
       errBox.classList.remove('hidden');
+    }
+    showToast(friendlyMsg, 'error');
+
+    if (err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit')) || err.code === 'over_email_send_rate_limit') {
+      startButtonCooldown('btn-reg-scrap', 'scrap-reg-btn-text', 'Submit Scrap Business Application for Admin Approval', 60);
+    }
+  } finally {
+    isAuthSubmitting = false;
+    if (spinner) spinner.classList.add('hidden');
+    if (!activeCooldownTimers['btn-reg-scrap']) {
+      if (btnText) btnText.textContent = 'Submit Scrap Business Application for Admin Approval';
+      if (submitBtn) submitBtn.disabled = false;
     }
   }
 }
-
-// ====================================================================
-// 4. MASTER ADMINISTRATOR AUTHENTICATION (Strictly ganeshhonnalli07@gmail.com)
-// ====================================================================
 
 async function handleMasterAdminLogin(event) {
   if (!supabase) getSupabase();
@@ -6478,6 +6712,7 @@ function openPolicyModal(type) {
 // ====================================================================
 async function initApp() {
   try {
+    inspectAuthRedirect();
     initLocation();
     runQuickBookCalc();
     runQuickRaddiCalc();
