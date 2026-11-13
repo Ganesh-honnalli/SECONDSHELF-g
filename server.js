@@ -300,6 +300,90 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API endpoint: Approve Business (Book Stall or Scrap Depot)
+  if (reqPath === '/api/approve-business' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { type, id, userId } = JSON.parse(body);
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Server missing admin client.' }));
+          return;
+        }
+
+        if (type === 'stall') {
+          await supabaseAdmin.from('book_stalls').update({ approval_status: 'approved' }).eq('id', id);
+          if (userId) {
+            const { data: existingRoles } = await supabaseAdmin.from('user_roles').select('id').eq('user_id', userId);
+            if (existingRoles && existingRoles.length > 0) {
+              await supabaseAdmin.from('user_roles').update({ role: 'book_stall', is_approved: true }).eq('id', existingRoles[0].id);
+            } else {
+              await supabaseAdmin.from('user_roles').insert([{ user_id: userId, role: 'book_stall', is_approved: true }]);
+            }
+          }
+        } else {
+          await supabaseAdmin.from('scrap_owners').update({ approval_status: 'approved' }).eq('id', id);
+          if (userId) {
+            const { data: existingRoles } = await supabaseAdmin.from('user_roles').select('id').eq('user_id', userId);
+            if (existingRoles && existingRoles.length > 0) {
+              await supabaseAdmin.from('user_roles').update({ role: 'raddi_owner', is_approved: true }).eq('id', existingRoles[0].id);
+            } else {
+              await supabaseAdmin.from('user_roles').insert([{ user_id: userId, role: 'raddi_owner', is_approved: true }]);
+            }
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, message: 'Business successfully approved.' }));
+      } catch (err) {
+        console.error('Error in /api/approve-business:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Reject Business
+  if (reqPath === '/api/reject-business' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { type, id, userId } = JSON.parse(body);
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Server missing admin client.' }));
+          return;
+        }
+
+        if (type === 'stall') {
+          await supabaseAdmin.from('book_stalls').update({ approval_status: 'rejected' }).eq('id', id);
+          if (userId) {
+            await supabaseAdmin.from('user_roles').update({ role: 'seller', is_approved: false }).eq('user_id', userId);
+          }
+        } else {
+          await supabaseAdmin.from('scrap_owners').update({ approval_status: 'rejected' }).eq('id', id);
+          if (userId) {
+            await supabaseAdmin.from('user_roles').update({ role: 'seller', is_approved: false }).eq('user_id', userId);
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, message: 'Business application rejected.' }));
+      } catch (err) {
+        console.error('Error in /api/reject-business:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
   if (reqPath === '/') {
     reqPath = '/index.html';
   }

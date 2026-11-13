@@ -274,6 +274,127 @@ async function handleForgotPasswordSubmit(event) {
   }
 }
 
+// ====================================================================
+// FLOATING SUGGESTION BOX CONTROLLER
+// ====================================================================
+
+function openSuggestionBoxModal() {
+  const nameInput = document.getElementById('suggestion-name');
+  const emailInput = document.getElementById('suggestion-email');
+  const errBox = document.getElementById('suggestion-error-box');
+  const succBox = document.getElementById('suggestion-success-box');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (state.currentUser) {
+    if (nameInput && !nameInput.value) nameInput.value = state.currentUser.name || '';
+    if (emailInput && !emailInput.value) emailInput.value = state.currentUser.email || '';
+  }
+
+  document.getElementById('modal-suggestion-box')?.classList.remove('hidden');
+  document.getElementById('suggestion-message')?.focus();
+}
+
+async function handleSuggestionSubmit(event) {
+  if (event) event.preventDefault();
+  if (!supabase) getSupabase();
+
+  const name = document.getElementById('suggestion-name')?.value?.trim() || 'Anonymous User';
+  const email = document.getElementById('suggestion-email')?.value?.trim() || '';
+  const category = document.getElementById('suggestion-category')?.value || 'General Feedback';
+  const message = document.getElementById('suggestion-message')?.value?.trim();
+
+  const errBox = document.getElementById('suggestion-error-box');
+  const errMsg = document.getElementById('suggestion-error-msg');
+  const succBox = document.getElementById('suggestion-success-box');
+  const succMsg = document.getElementById('suggestion-success-msg');
+  const spinner = document.getElementById('suggestion-spinner');
+  const btnText = document.getElementById('suggestion-btn-text');
+  const submitBtn = document.getElementById('btn-submit-suggestion');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!message) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Please enter your suggestion or feedback before submitting.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Submitting Suggestion...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  const ticketNumber = 'SUGG-' + Date.now().toString().slice(-6);
+
+  try {
+    if (supabase) {
+      // 1. Save to complaints table
+      try {
+        await supabase.from('complaints').insert([{
+          ticket_number: ticketNumber,
+          filed_by: state.currentUser ? state.currentUser.id : null,
+          subject: `[Suggestion] ${category} - ${name}`,
+          description: `${message}${email ? ` | Contact: ${email}` : ''}`,
+          status: 'open'
+        }]);
+      } catch (dbErr) {
+        console.warn('Could not insert suggestion into complaints:', dbErr);
+      }
+
+      // 2. Also log in admin_audit_logs
+      try {
+        await supabase.from('admin_audit_logs').insert([{
+          action: 'community_suggestion',
+          target_type: 'feedback',
+          target_id: ticketNumber,
+          details: {
+            ticket_number: ticketNumber,
+            name,
+            email,
+            category,
+            message,
+            timestamp: new Date().toISOString()
+          }
+        }]);
+      } catch (e) {}
+    }
+
+    // 3. Admin live notification
+    addAdminLiveNotification('💡 New Suggestion Received', name, category, 'NEW');
+
+    if (succBox && succMsg) {
+      succMsg.innerHTML = `<strong>Thank You!</strong> Your suggestion (#${ticketNumber}) has been submitted to the SECOND SHELF team. We appreciate your ideas!`;
+      succBox.classList.remove('hidden');
+    }
+
+    const form = document.getElementById('form-suggestion-box');
+    if (form) form.reset();
+
+    showToast('Thank you! Your suggestion has been recorded 💡', 'success');
+
+    setTimeout(() => {
+      closeModal('modal-suggestion-box');
+      if (spinner) spinner.classList.add('hidden');
+      if (btnText) btnText.textContent = 'Submit Suggestion to Administrator';
+      if (submitBtn) submitBtn.disabled = false;
+      if (succBox) succBox.classList.add('hidden');
+    }, 2000);
+
+  } catch (err) {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Submit Suggestion to Administrator';
+    if (submitBtn) submitBtn.disabled = false;
+    if (errBox && errMsg) {
+      errMsg.textContent = err.message || 'Error submitting suggestion. Please try again.';
+      errBox.classList.remove('hidden');
+    }
+  }
+}
+
 // Post-Login Location Request (Requirement 7)
 function promptPostLoginLocation() {
   document.getElementById('modal-post-login-location')?.classList.remove('hidden');
@@ -5587,11 +5708,23 @@ function setAdminTab(tab) {
 
 // Admin Partner Approval Actions
 async function approveBusiness(type, id) {
+  const stall = type === 'stall' ? state.bookStalls.find(s => s.id === id) : null;
+  const scrap = type !== 'stall' ? state.scrapOwners.find(s => s.id === id) : null;
+  const targetUserId = stall?.user_id || scrap?.user_id;
+
+  // 1. Try local server endpoint if available
+  try {
+    await fetch('/api/approve-business', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, id, userId: targetUserId })
+    });
+  } catch (e) {}
+
   if (supabase) {
     try {
       if (type === 'stall') {
-        await supabase.from('book_stalls').update({ approval_status: 'approved', is_approved: true }).eq('id', id);
-        const stall = state.bookStalls.find(s => s.id === id);
+        await supabase.from('book_stalls').update({ approval_status: 'approved' }).eq('id', id);
         if (stall) {
           stall.approval_status = 'approved';
           stall.is_approved = true;
@@ -5605,8 +5738,7 @@ async function approveBusiness(type, id) {
           addAdminLiveNotification('Book Stall Application Approved', stall.owner_name, 'Book Stall', 'APPROVED');
         }
       } else {
-        await supabase.from('scrap_owners').update({ approval_status: 'approved', is_approved: true }).eq('id', id);
-        const scrap = state.scrapOwners.find(s => s.id === id);
+        await supabase.from('scrap_owners').update({ approval_status: 'approved' }).eq('id', id);
         if (scrap) {
           scrap.approval_status = 'approved';
           scrap.is_approved = true;
@@ -5631,13 +5763,25 @@ async function approveBusiness(type, id) {
 }
 
 async function rejectBusiness(type, id) {
+  const stall = type === 'stall' ? state.bookStalls.find(s => s.id === id) : null;
+  const scrap = type !== 'stall' ? state.scrapOwners.find(s => s.id === id) : null;
+  const targetUserId = stall?.user_id || scrap?.user_id;
+
+  try {
+    await fetch('/api/reject-business', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, id, userId: targetUserId })
+    });
+  } catch (e) {}
+
   if (supabase) {
     try {
       if (type === 'stall') {
         await supabase.from('book_stalls').update({ approval_status: 'rejected' }).eq('id', id);
-        const stall = state.bookStalls.find(s => s.id === id);
         if (stall) {
           stall.approval_status = 'rejected';
+          stall.is_approved = false;
           await syncUserRole(stall.user_id, 'seller', false);
           await supabase.from('notifications').insert({
             user_id: stall.user_id,
@@ -5649,9 +5793,9 @@ async function rejectBusiness(type, id) {
         }
       } else {
         await supabase.from('scrap_owners').update({ approval_status: 'rejected' }).eq('id', id);
-        const scrap = state.scrapOwners.find(s => s.id === id);
         if (scrap) {
           scrap.approval_status = 'rejected';
+          scrap.is_approved = false;
           await syncUserRole(scrap.user_id, 'seller', false);
           await supabase.from('notifications').insert({
             user_id: scrap.user_id,

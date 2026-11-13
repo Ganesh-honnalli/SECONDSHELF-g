@@ -2861,7 +2861,131 @@
     </div>
   </div>
 
+  <!-- ==================================================================== -->
+  <!-- FLOATING SUGGESTION BOX BUTTON (Bottom-Left Corner)                  -->
+  <!-- ==================================================================== -->
+  <div id="floating-suggestion-container" class="fixed bottom-5 left-5 z-40 flex flex-col items-start">
+    <button 
+      type="button"
+      onclick="openSuggestionBoxModal()" 
+      id="btn-open-suggestion-box" 
+      class="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white font-black px-4 py-3 rounded-full shadow-2xl flex items-center gap-2 border-2 border-white/80 transition-all transform hover:scale-105 active:scale-95 text-xs sm:text-sm tracking-wide cursor-pointer"
+      title="Share feedback or suggest an improvement"
+    >
+      <span class="text-base sm:text-lg animate-bounce">💡</span>
+      <span class="font-bold">Suggestion Box</span>
+      <span class="bg-amber-900/60 text-amber-200 text-[10px] px-2 py-0.5 rounded-full font-black border border-amber-300/40">Ideas</span>
+    </button>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: COMMUNITY SUGGESTION BOX                                      -->
+  <!-- ==================================================================== -->
+  <div id="modal-suggestion-box" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 text-slate-900 border-2 border-amber-300 max-h-[94vh] flex flex-col transition-all">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-amber-100 flex-shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-xl font-black shadow-md">
+            💡
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h3 class="text-base font-extrabold text-slate-900">SECOND SHELF Suggestion Box</h3>
+              <span class="bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300">Feedback</span>
+            </div>
+            <p class="text-[11px] text-slate-500 font-medium">Your ideas, feedback & feature requests shape SECOND SHELF</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeModal('modal-suggestion-box')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
+      </div>
+
+      <div class="overflow-y-auto py-4 flex-1 pr-1 space-y-3">
+        <!-- Error & Success Alert Boxes -->
+        <div id="suggestion-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-900 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">⚠️</span>
+          <span id="suggestion-error-msg" class="leading-relaxed">Please write your suggestion before submitting.</span>
+        </div>
+        <div id="suggestion-success-box" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="text-base flex-shrink-0">🎉</span>
+          <span id="suggestion-success-msg" class="leading-relaxed">Thank you! Your suggestion has been recorded and submitted to the administrator.</span>
+        </div>
+
+        <form id="form-suggestion-box" onsubmit="handleSuggestionSubmit(event)" class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Your Name</label>
+              <input 
+                type="text" 
+                id="suggestion-name" 
+                placeholder="e.g. Ramesh or Student" 
+                class="w-full text-xs px-3 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Email (Optional)</label>
+              <input 
+                type="email" 
+                id="suggestion-email" 
+                placeholder="For reply / acknowledgment" 
+                class="w-full text-xs px-3 py-2.5 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Suggestion Category *</label>
+            <select 
+              id="suggestion-category" 
+              required 
+              class="w-full text-xs px-3 py-2.5 rounded-lg border border-slate-300 amazon-focus font-semibold text-slate-900 bg-white"
+            >
+              <option value="Feature Idea">💡 New Feature / Platform Idea</option>
+              <option value="Book Stall Feedback">📚 Book Stall / Bookstore Suggestions</option>
+              <option value="Recycle Scrap Feedback">♻️ Recycle Scrap Depot Suggestions</option>
+              <option value="Campus / College">🏫 Request New College / Campus Addition</option>
+              <option value="UI & Usability">🎨 Website Usability / UI Design</option>
+              <option value="Report Bug">🐛 Report a Bug or Glitch</option>
+              <option value="General Feedback">💬 General Compliment / Other Thoughts</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Your Suggestion / Detailed Thoughts *</label>
+            <textarea 
+              id="suggestion-message" 
+              required 
+              rows="4" 
+              placeholder="Tell us what you would love to see on SECOND SHELF! For example: Add doorstep paper pickup for BVB College campus, allow semester-wise textbook packs, etc." 
+              class="w-full text-xs p-3 rounded-lg border border-slate-300 amazon-focus font-medium text-slate-900"
+            ></textarea>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-[11px] text-amber-900 flex items-center gap-2">
+            <span>✨</span>
+            <span>Every suggestion is reviewed directly in the Administrator Dashboard to improve the platform!</span>
+          </div>
+
+          <button 
+            type="submit" 
+            id="btn-submit-suggestion" 
+            class="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-2.5 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-2"
+          >
+            <span id="suggestion-spinner" class="hidden animate-spin">🔄</span>
+            <span id="suggestion-btn-text">Submit Suggestion to Administrator</span>
+            <span>🚀</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="pt-3 border-t border-amber-100 flex items-center justify-between text-[11px] text-slate-500 flex-shrink-0">
+        <span>SECOND SHELF Community Feedback</span>
+        <button type="button" onclick="closeModal('modal-suggestion-box')" class="text-slate-600 hover:text-slate-900 font-bold">Close Window</button>
+      </div>
+    </div>
+  </div>
+
 <script src="supabase-config.js?v=1794165948831"></script>
-  <script src="app.js?v=20261113_auth_v4"></script>
+  <script src="app.js?v=20261113_suggestion_box_v5"></script>
 </body>
 </html>
