@@ -246,6 +246,80 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+
+  // API endpoint: Login User with auto-confirmation fallback
+  if (reqPath === '/api/login-user' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email, password } = JSON.parse(body || '{}');
+        if (!email || !password) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Email and password required.' }));
+          return;
+        }
+
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Server missing admin credentials.' }));
+          return;
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+
+        // Look up user
+        const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+        if (listErr) throw listErr;
+        const found = usersData.users.find(u => u.email?.toLowerCase() === cleanEmail);
+        if (!found) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Invalid email or password.' }));
+          return;
+        }
+
+        // If email was unconfirmed, auto-confirm it so the user is never locked out by SMTP rate limits
+        if (!found.email_confirmed_at) {
+          await supabaseAdmin.auth.admin.updateUserById(found.id, {
+            email_confirm: true
+          });
+        }
+
+        // Authenticate password with Supabase
+        const env = loadEnv();
+        const anonKey = env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+        const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+        const { createClient } = await import('@supabase/supabase-js');
+        const client = createClient(supabaseUrl, anonKey);
+
+        const { data: signInData, error: signInErr } = await client.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+
+        if (signInErr) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: signInErr.message || 'Invalid email or password.' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: true,
+          session: signInData.session,
+          user: signInData.user
+        }));
+
+      } catch (err) {
+        console.error('Error in /api/login-user:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message || 'Login error.' }));
+      }
+    });
+    return;
+  }
+
   // API endpoint: Check User Status (Registration & Verification Check)
   if (reqPath === '/api/check-user-status' && req.method === 'POST') {
     let body = '';

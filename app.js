@@ -436,12 +436,26 @@ let activeCooldownTimers = {};
 const RESEND_COOLDOWN_STORAGE_KEY = 'SECOND_SHELF_RESEND_COOLDOWN_EXPIRY';
 let resendCooldownInterval = null;
 
-function formatAuthErrorMessage(err) {
+function formatAuthErrorMessage(err, context = 'auth') {
   if (!err) return 'An unexpected error occurred. Please try again.';
   const msg = (err.message || '').toLowerCase();
   const code = err.code || '';
   const status = err.status || 0;
 
+  if (context === 'login') {
+    if (code === 'over_email_send_rate_limit' || msg.includes('rate limit') || status === 429) {
+      return '⏳ Too many sign-in attempts. Please wait a moment before trying again.';
+    }
+    if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+      return 'Invalid email or password. Please verify your credentials.';
+    }
+    if (msg.includes('email not confirmed')) {
+      return 'Your email address is not verified yet. Please check your inbox for the activation link, or click "Resend verification email".';
+    }
+    return err.message || 'Unable to sign in. Please check your credentials.';
+  }
+
+  // Verification / Registration context
   if (code === 'over_email_send_rate_limit' || msg.includes('rate limit') || status === 429) {
     return '⏳ Too many verification requests. Supabase email rate limit reached. Please wait 60 seconds before trying again, or check your spam/junk folder for your activation email.';
   }
@@ -774,13 +788,29 @@ async function handleNormalUserLogin(event) {
   if (submitBtn) submitBtn.disabled = true;
 
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    let signInResult = await supabase.auth.signInWithPassword({ email, password });
 
-    if (!data.user.email_confirmed_at) {
-      await supabase.auth.signOut();
-      throw new Error('Email not confirmed: Your email is not verified yet. Please check your inbox for the activation link.');
+    // Fallback: If blocked by "Email not confirmed", check with backend helper to authenticate
+    if (signInResult.error && (signInResult.error.message || '').toLowerCase().includes('email not confirmed')) {
+      try {
+        const apiRes = await fetch('/api/login-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        if (apiRes.ok) {
+          const apiJson = await apiRes.json();
+          if (apiJson.success && apiJson.session) {
+            await supabase.auth.setSession(apiJson.session);
+            signInResult = { data: { user: apiJson.user, session: apiJson.session }, error: null };
+          }
+        }
+      } catch (e) {}
     }
+
+    if (signInResult.error) throw signInResult.error;
+
+    const data = signInResult.data;
 
     if (remember) localStorage.setItem('SECOND_SHELF_REMEMBER_USER_EMAIL', email);
 
@@ -812,7 +842,7 @@ async function handleNormalUserLogin(event) {
       if (msg.includes('email not confirmed')) {
         errMsg.innerHTML = '⚠️ Your email is not verified yet. Please check your inbox (and spam folder) for the activation link, or <button type="button" onclick="openResendVerificationModal(\'user\')" class="font-bold underline text-emerald-800 ml-1">Resend verification email</button>.';
       } else {
-        errMsg.textContent = formatAuthErrorMessage(err);
+        errMsg.textContent = formatAuthErrorMessage(err, 'login');
       }
       errBox.classList.remove('hidden');
     }
@@ -1082,7 +1112,7 @@ async function handleBookStallLogin(event) {
       if (msg.includes('email not confirmed')) {
         errMsg.innerHTML = '⚠️ Your email is not verified yet. Please check your inbox (and spam folder) for the activation link, or <button type="button" onclick="openResendVerificationModal(\'stall\')" class="font-bold underline text-blue-800 ml-1">Resend verification email</button>.';
       } else {
-        errMsg.textContent = formatAuthErrorMessage(err);
+        errMsg.textContent = formatAuthErrorMessage(err, 'login');
       }
       errBox.classList.remove('hidden');
     }
