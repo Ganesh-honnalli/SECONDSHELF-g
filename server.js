@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,6 +57,67 @@ function getAdminClient() {
   return createClient(supabaseUrl, serviceKey);
 }
 
+// Backend in-memory cooldown tracker: cleanEmail -> timestamp
+const resendCooldowns = {};
+
+function getEmailTransporter() {
+  const env = loadEnv();
+  const host = env.SMTP_HOST || process.env.SMTP_HOST;
+  const user = env.SMTP_USER || process.env.SMTP_USER;
+  const pass = env.SMTP_PASS || process.env.SMTP_PASS;
+  const port = parseInt(env.SMTP_PORT || process.env.SMTP_PORT || '587', 10);
+  if (!host || !user || !pass) return null;
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass }
+  });
+}
+
+async function sendActivationEmail(toEmail, actionLink, fullName) {
+  const transporter = getEmailTransporter();
+  if (!transporter) return false;
+  const env = loadEnv();
+  const from = env.SMTP_FROM || process.env.SMTP_FROM || `"SECOND SHELF" <${env.SMTP_USER || process.env.SMTP_USER}>`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+      <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #059669;">
+        <h1 style="color: #065f46; margin: 0; font-size: 24px; letter-spacing: 1px;">SECOND SHELF</h1>
+        <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">College Textbook & Paper Recycling Marketplace</p>
+      </div>
+      <div style="padding: 24px 0;">
+        <h2 style="color: #1e293b; font-size: 18px; margin-top: 0;">Verify Your Email Address</h2>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">Hello <strong>${fullName || 'there'}</strong>,</p>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">Thank you for registering with SECOND SHELF! Please click the button below to verify your email address and activate your account:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${actionLink}" style="background-color: #059669; color: #ffffff; padding: 12px 28px; font-weight: bold; font-size: 14px; text-decoration: none; border-radius: 8px; display: inline-block;">Activate Account</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px; line-height: 1.5;">If the button above does not work, copy and paste this link into your browser:<br/><a href="${actionLink}" style="color: #0284c7; word-break: break-all;">${actionLink}</a></p>
+        <p style="color: #94a3b8; font-size: 11px; margin-top: 24px; line-height: 1.4;">This activation link is valid for 24 hours. If you did not create an account on SECOND SHELF, you can safely ignore this email.</p>
+      </div>
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; color: #94a3b8; font-size: 11px;">
+        &copy; 2026 SECOND SHELF. All rights reserved.
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: toEmail,
+      subject: 'Verify your SECOND SHELF account',
+      html
+    });
+    return true;
+  } catch (err) {
+    console.error('Nodemailer dispatch error:', err);
+    return false;
+  }
+}
+
+
 const server = http.createServer((req, res) => {
   // Normalize URL
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -76,7 +138,152 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API endpoint: Register Book Stall Owner with Auto Email Confirmation
+  // API endpoint: Resend Verification Email (Custom SMTP & Rate-Limit Protected)
+  if (reqPath === '/api/resend-verification' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email } = JSON.parse(body || '{}');
+        if (!email || !email.includes('@')) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Please provide a valid registered email address.' }));
+          return;
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+
+        // Check backend 60s cooldown per email
+        const now = Date.now();
+        const lastSent = resendCooldowns[cleanEmail] || 0;
+        if (now - lastSent < 60000) {
+          const remaining = Math.ceil((60000 - (now - lastSent)) / 1000);
+          res.writeHead(429, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            success: false,
+            rateLimited: true,
+            error: `Please wait ${remaining} seconds before requesting another verification email.`,
+            remaining
+          }));
+          return;
+        }
+
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Server missing admin credentials.' }));
+          return;
+        }
+
+        // Look up user in Supabase
+        const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+        if (listErr) throw listErr;
+
+        const foundUser = usersData.users.find(u => u.email?.toLowerCase() === cleanEmail);
+        if (!foundUser) {
+          res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            success: false,
+            error: 'No registered account found with this email. Please check your email or create a new account.'
+          }));
+          return;
+        }
+
+        if (foundUser.email_confirmed_at) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            success: false,
+            alreadyVerified: true,
+            error: 'Your email is already verified! You can sign in directly.'
+          }));
+          return;
+        }
+
+        // Generate official cryptographic verification link
+        const env = loadEnv();
+        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'signup',
+          email: cleanEmail,
+          options: {
+            redirectTo: appUrl
+          }
+        });
+
+        if (linkErr) throw linkErr;
+
+        const actionLink = linkData?.properties?.action_link;
+        const recipientName = foundUser.user_metadata?.full_name || cleanEmail.split('@')[0];
+
+        // Record cooldown timestamp
+        resendCooldowns[cleanEmail] = now;
+
+        // Dispatch via Custom SMTP if configured
+        const emailSent = await sendActivationEmail(cleanEmail, actionLink, recipientName);
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: true,
+          method: emailSent ? 'smtp' : 'supabase',
+          message: emailSent 
+            ? `Fresh verification email dispatched via Custom SMTP to ${cleanEmail}! Please check your inbox and spam folder.`
+            : `Verification link generated for ${cleanEmail}! Please check your email to activate your account.`
+        }));
+
+      } catch (err) {
+        console.error('Error in /api/resend-verification:', err);
+        const is429 = err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit'));
+        res.writeHead(is429 ? 429 : 500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: false,
+          rateLimited: is429,
+          error: is429
+            ? 'Supabase email rate limit reached. Please wait 60 seconds before trying again.'
+            : (err.message || 'Error processing verification request.')
+        }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Check User Status (Registration & Verification Check)
+  if (reqPath === '/api/check-user-status' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email } = JSON.parse(body || '{}');
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Email required' }));
+          return;
+        }
+
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Admin client unavailable' }));
+          return;
+        }
+
+        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+        const found = usersData?.users?.find(u => u.email?.toLowerCase() === email.trim().toLowerCase());
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          exists: !!found,
+          verified: !!found?.email_confirmed_at,
+          role: found?.user_metadata?.role || 'seller'
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Register Book Stall Owner (Real Email Verification & Admin Approval Required)
   if (reqPath === '/api/register-stall' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -86,32 +293,24 @@ const server = http.createServer((req, res) => {
         const { ownerName, stallName, email, phone, address, stateVal, district, city, licence, password } = data;
         const supabaseAdmin = getAdminClient();
         if (!supabaseAdmin) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ success: false, error: 'Server missing admin credentials.' }));
           return;
         }
 
         let userId;
+        // email_confirm: false enforces real email verification
         const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
           email,
           password,
-          email_confirm: true,
-          user_metadata: { full_name: ownerName, phone, role: 'seller' }
+          email_confirm: false,
+          user_metadata: { full_name: ownerName, phone, role: 'seller', business_type: 'book_stall' }
         });
 
         if (createErr && createErr.message.includes('already registered')) {
-          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-          const found = users.users.find(u => u.email === email);
-          if (found) {
-            userId = found.id;
-            await supabaseAdmin.auth.admin.updateUserById(userId, {
-              password,
-              email_confirm: true,
-              user_metadata: { full_name: ownerName, phone, role: 'seller' }
-            });
-          } else {
-            throw createErr;
-          }
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'An account with this email already exists. Please sign in or use Forgot Password.' }));
+          return;
         } else if (createErr) {
           throw createErr;
         } else {
@@ -137,20 +336,28 @@ const server = http.createServer((req, res) => {
           phone: phone,
           email: email,
           age_confirmed: true,
-          is_verified: true
+          is_verified: false
         }]);
 
-        const { data: existingRoles } = await supabaseAdmin.from('user_roles').select('id').eq('user_id', userId);
-        if (existingRoles && existingRoles.length > 0) {
-          await supabaseAdmin.from('user_roles').update({ role: 'seller', is_approved: false }).eq('id', existingRoles[0].id);
-        } else {
-          await supabaseAdmin.from('user_roles').insert([{ user_id: userId, role: 'seller', is_approved: false }]);
+        await supabaseAdmin.from('user_roles').upsert([{ user_id: userId, role: 'seller', is_approved: false }]);
+
+        // Generate email activation link and send via SMTP
+        const env = loadEnv();
+        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'signup',
+          email: email.trim().toLowerCase(),
+          options: { redirectTo: appUrl }
+        });
+
+        if (linkData?.properties?.action_link) {
+          await sendActivationEmail(email.trim().toLowerCase(), linkData.properties.action_link, ownerName);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({
           success: true,
-          message: 'Your Book Stall registration has been submitted. Waiting for Admin approval.'
+          message: 'Your Book Stall registration has been submitted. Verification email dispatched to your inbox. Waiting for Admin approval.'
         }));
       } catch (err) {
         console.error('Error in /api/register-stall:', err);
@@ -161,7 +368,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API endpoint: Register Scrap Business Owner with Auto Email Confirmation
+  // API endpoint: Register Scrap Business Owner (Real Email Verification & Admin Approval Required)
   if (reqPath === '/api/register-scrap' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -171,32 +378,24 @@ const server = http.createServer((req, res) => {
         const { ownerName, bizName, email, phone, address, stateVal, district, city, licence, password } = data;
         const supabaseAdmin = getAdminClient();
         if (!supabaseAdmin) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ success: false, error: 'Server missing admin credentials.' }));
           return;
         }
 
         let userId;
+        // email_confirm: false enforces real email verification
         const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
           email,
           password,
-          email_confirm: true,
-          user_metadata: { full_name: ownerName, phone, role: 'seller' }
+          email_confirm: false,
+          user_metadata: { full_name: ownerName, phone, role: 'seller', business_type: 'scrap_depot' }
         });
 
         if (createErr && createErr.message.includes('already registered')) {
-          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-          const found = users.users.find(u => u.email === email);
-          if (found) {
-            userId = found.id;
-            await supabaseAdmin.auth.admin.updateUserById(userId, {
-              password,
-              email_confirm: true,
-              user_metadata: { full_name: ownerName, phone, role: 'seller' }
-            });
-          } else {
-            throw createErr;
-          }
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'An account with this email already exists. Please sign in or use Forgot Password.' }));
+          return;
         } else if (createErr) {
           throw createErr;
         } else {
@@ -223,20 +422,28 @@ const server = http.createServer((req, res) => {
           phone: phone,
           email: email,
           age_confirmed: true,
-          is_verified: true
+          is_verified: false
         }]);
 
-        const { data: existingRoles } = await supabaseAdmin.from('user_roles').select('id').eq('user_id', userId);
-        if (existingRoles && existingRoles.length > 0) {
-          await supabaseAdmin.from('user_roles').update({ role: 'seller', is_approved: false }).eq('id', existingRoles[0].id);
-        } else {
-          await supabaseAdmin.from('user_roles').insert([{ user_id: userId, role: 'seller', is_approved: false }]);
+        await supabaseAdmin.from('user_roles').upsert([{ user_id: userId, role: 'seller', is_approved: false }]);
+
+        // Generate email activation link and send via SMTP
+        const env = loadEnv();
+        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'signup',
+          email: email.trim().toLowerCase(),
+          options: { redirectTo: appUrl }
+        });
+
+        if (linkData?.properties?.action_link) {
+          await sendActivationEmail(email.trim().toLowerCase(), linkData.properties.action_link, ownerName);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({
           success: true,
-          message: 'Your Scrap Business registration has been submitted. Waiting for Admin approval.'
+          message: 'Your Scrap Business registration has been submitted. Verification email dispatched to your inbox. Waiting for Admin approval.'
         }));
       } catch (err) {
         console.error('Error in /api/register-scrap:', err);
@@ -247,7 +454,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API endpoint: Register Normal User with Auto Email Confirmation
+  // API endpoint: Register Normal User (Real Email Verification Required)
   if (reqPath === '/api/register-user' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -257,19 +464,26 @@ const server = http.createServer((req, res) => {
         const { name, email, phone, password } = data;
         const supabaseAdmin = getAdminClient();
         if (!supabaseAdmin) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ success: false, error: 'Server missing admin credentials.' }));
           return;
         }
 
+        // email_confirm: false enforces real email verification
         const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
           email,
           password,
-          email_confirm: true,
+          email_confirm: false,
           user_metadata: { full_name: name, phone, role: 'seller' }
         });
 
-        if (createErr) throw createErr;
+        if (createErr && createErr.message.includes('already registered')) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'An account with this email already exists. Please sign in or use Forgot Password.' }));
+          return;
+        } else if (createErr) {
+          throw createErr;
+        }
 
         await supabaseAdmin.from('profiles').upsert([{
           id: newUser.user.id,
@@ -277,19 +491,32 @@ const server = http.createServer((req, res) => {
           phone: phone,
           email: email,
           age_confirmed: true,
-          is_verified: true
+          is_verified: false
         }]);
 
-        await supabaseAdmin.from('user_roles').insert([{
+        await supabaseAdmin.from('user_roles').upsert([{
           user_id: newUser.user.id,
           role: 'seller',
           is_approved: true
         }]);
 
+        // Generate email activation link and send via SMTP
+        const env = loadEnv();
+        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'signup',
+          email: email.trim().toLowerCase(),
+          options: { redirectTo: appUrl }
+        });
+
+        if (linkData?.properties?.action_link) {
+          await sendActivationEmail(email.trim().toLowerCase(), linkData.properties.action_link, name);
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({
           success: true,
-          message: 'User account created successfully! You can now sign in.'
+          message: 'User account created successfully! Verification email dispatched to your inbox. Please verify before signing in.'
         }));
       } catch (err) {
         console.error('Error in /api/register-user:', err);

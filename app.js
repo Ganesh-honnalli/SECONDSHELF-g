@@ -433,6 +433,8 @@ async function syncUserRole(userId, newRole, isApproved = true) {
 
 let isAuthSubmitting = false;
 let activeCooldownTimers = {};
+const RESEND_COOLDOWN_STORAGE_KEY = 'SECOND_SHELF_RESEND_COOLDOWN_EXPIRY';
+let resendCooldownInterval = null;
 
 function formatAuthErrorMessage(err) {
   if (!err) return 'An unexpected error occurred. Please try again.';
@@ -455,6 +457,72 @@ function formatAuthErrorMessage(err) {
   return err.message || 'Authentication error. Please try again.';
 }
 
+// Persistent Resend Cooldown Manager
+function getResendCooldownRemaining() {
+  try {
+    const expiry = parseInt(localStorage.getItem(RESEND_COOLDOWN_STORAGE_KEY) || '0', 10);
+    const remaining = Math.ceil((expiry - Date.now()) / 1000);
+    return remaining > 0 ? remaining : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function startResendCooldown(seconds = 60) {
+  try {
+    const expiry = Date.now() + (seconds * 1000);
+    localStorage.setItem(RESEND_COOLDOWN_STORAGE_KEY, expiry.toString());
+  } catch (e) {}
+  updateResendCooldownUI();
+}
+
+function updateResendCooldownUI() {
+  const btn = document.getElementById('btn-resend-verification');
+  const btnText = document.getElementById('resend-verification-btn-text');
+  const emailInput = document.getElementById('resend-verification-email');
+  const cooldownInfo = document.getElementById('resend-cooldown-info');
+  const cooldownTimer = document.getElementById('resend-cooldown-timer');
+
+  if (resendCooldownInterval) {
+    clearInterval(resendCooldownInterval);
+    resendCooldownInterval = null;
+  }
+
+  const checkAndTick = () => {
+    const remaining = getResendCooldownRemaining();
+    if (remaining > 0) {
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-60', 'cursor-not-allowed');
+      }
+      if (emailInput) emailInput.disabled = true;
+      if (btnText) btnText.textContent = `Please wait (${remaining}s) ⏳`;
+      if (cooldownInfo && cooldownTimer) {
+        cooldownInfo.classList.remove('hidden');
+        cooldownTimer.textContent = remaining;
+      }
+    } else {
+      if (resendCooldownInterval) {
+        clearInterval(resendCooldownInterval);
+        resendCooldownInterval = null;
+      }
+      try { localStorage.removeItem(RESEND_COOLDOWN_STORAGE_KEY); } catch (e) {}
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+      if (emailInput) emailInput.disabled = false;
+      if (btnText) btnText.textContent = 'Resend Verification Email';
+      if (cooldownInfo) cooldownInfo.classList.add('hidden');
+    }
+  };
+
+  checkAndTick();
+  if (getResendCooldownRemaining() > 0) {
+    resendCooldownInterval = setInterval(checkAndTick, 1000);
+  }
+}
+
 function startButtonCooldown(btnId, textId, defaultText, seconds = 60) {
   const btn = document.getElementById(btnId);
   const textEl = document.getElementById(textId);
@@ -465,6 +533,7 @@ function startButtonCooldown(btnId, textId, defaultText, seconds = 60) {
   }
 
   btn.disabled = true;
+  btn.classList.add('opacity-60', 'cursor-not-allowed');
   let remaining = seconds;
 
   if (textEl) textEl.textContent = `Please wait (${remaining}s) ⏳`;
@@ -477,6 +546,7 @@ function startButtonCooldown(btnId, textId, defaultText, seconds = 60) {
       clearInterval(activeCooldownTimers[btnId]);
       delete activeCooldownTimers[btnId];
       btn.disabled = false;
+      btn.classList.remove('opacity-60', 'cursor-not-allowed');
       if (textEl) textEl.textContent = defaultText;
     }
   }, 1000);
@@ -504,14 +574,32 @@ function openResendVerificationModal(portal = 'user', initialMsg = '') {
     errBox.classList.add('hidden');
   }
 
+  updateResendCooldownUI();
   document.getElementById('modal-resend-verification')?.classList.remove('hidden');
 }
 
 async function handleResendVerificationSubmit(event) {
-  if (event) event.preventDefault();
-  if (!supabase) getSupabase();
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
 
-  const email = document.getElementById('resend-verification-email')?.value?.trim();
+  // 1. Guard against double-submits
+  if (isAuthSubmitting) {
+    console.warn('Resend verification is already processing.');
+    return;
+  }
+
+  // 2. Guard against active cooldown
+  const remainingCooldown = getResendCooldownRemaining();
+  if (remainingCooldown > 0) {
+    showToast(`Please wait ${remainingCooldown}s before requesting another verification email.`, 'warning');
+    updateResendCooldownUI();
+    return;
+  }
+
+  const emailInput = document.getElementById('resend-verification-email');
+  const email = emailInput?.value?.trim();
   const errBox = document.getElementById('resend-verification-error-box');
   const errMsg = document.getElementById('resend-verification-error-msg');
   const succBox = document.getElementById('resend-verification-success-box');
@@ -519,25 +607,75 @@ async function handleResendVerificationSubmit(event) {
   const spinner = document.getElementById('resend-verification-spinner');
   const btnText = document.getElementById('resend-verification-btn-text');
   const submitBtn = document.getElementById('btn-resend-verification');
-  const cooldownInfo = document.getElementById('resend-cooldown-info');
-  const cooldownTimer = document.getElementById('resend-cooldown-timer');
 
   if (errBox) errBox.classList.add('hidden');
   if (succBox) succBox.classList.add('hidden');
 
-  if (!email) {
+  // Email format validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
     if (errBox && errMsg) {
-      errMsg.textContent = 'Please enter your registered email address.';
+      errMsg.textContent = 'Please enter a valid registered email address.';
       errBox.classList.remove('hidden');
     }
     return;
   }
 
+  isAuthSubmitting = true;
   if (spinner) spinner.classList.remove('hidden');
   if (btnText) btnText.textContent = 'Dispatching Link...';
-  if (submitBtn) submitBtn.disabled = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+  }
+  if (emailInput) emailInput.disabled = true;
 
   try {
+    let sentViaBackend = false;
+    let backendData = null;
+
+    // 3. Try backend endpoint first
+    try {
+      const apiRes = await fetch('/api/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (apiRes.status < 500) {
+        backendData = await apiRes.json();
+        sentViaBackend = true;
+      }
+    } catch (e) {
+      // Backend unavailable or static host (GitHub Pages)
+    }
+
+    if (sentViaBackend && backendData) {
+      if (backendData.success) {
+        if (succBox && succMsg) {
+          succMsg.textContent = backendData.message || `Fresh verification email dispatched to ${email}! Please check your inbox and spam folder.`;
+          succBox.classList.remove('hidden');
+        }
+        showToast('Verification email sent! Please check your inbox.', 'success');
+        startResendCooldown(60);
+        return;
+      } else {
+        if (backendData.alreadyVerified) {
+          if (succBox && succMsg) {
+            succMsg.textContent = backendData.error || 'Your email is already verified! You can sign in directly.';
+            succBox.classList.remove('hidden');
+          }
+          showToast('Account already verified! Please sign in.', 'info');
+          return;
+        }
+        if (backendData.rateLimited) {
+          startResendCooldown(backendData.remaining || 60);
+        }
+        throw new Error(backendData.error || 'Failed to dispatch verification email.');
+      }
+    }
+
+    // 4. Fallback: Call Supabase directly (for GitHub Pages static host)
+    if (!supabase) getSupabase();
     const { error } = await supabase.auth.resend({
       type: 'signup',
       email: email,
@@ -549,44 +687,31 @@ async function handleResendVerificationSubmit(event) {
     if (error) throw error;
 
     if (succBox && succMsg) {
-      succMsg.textContent = 'Fresh verification email dispatched to ' + email + '! Please check your inbox and spam folder.';
+      succMsg.textContent = `Fresh verification email dispatched to ${email}! Please check your inbox and spam folder.`;
       succBox.classList.remove('hidden');
     }
     showToast('Verification email sent! Please check your inbox.', 'success');
-
-    // Enforce 60-second cooldown
-    startButtonCooldown('btn-resend-verification', 'resend-verification-btn-text', 'Resend Verification Email', 60);
-
-    if (cooldownInfo && cooldownTimer) {
-      cooldownInfo.classList.remove('hidden');
-      let cd = 60;
-      cooldownTimer.textContent = cd;
-      const t = setInterval(() => {
-        cd--;
-        if (cd > 0) {
-          cooldownTimer.textContent = cd;
-        } else {
-          clearInterval(t);
-          cooldownInfo.classList.add('hidden');
-        }
-      }, 1000);
-    }
+    startResendCooldown(60);
 
   } catch (err) {
+    const isRateLimit = err.status === 429 || 
+      (err.message && err.message.toLowerCase().includes('rate limit')) || 
+      err.code === 'over_email_send_rate_limit';
+
     const friendly = formatAuthErrorMessage(err);
     if (errBox && errMsg) {
       errMsg.textContent = friendly;
       errBox.classList.remove('hidden');
     }
-    if (err.message && (err.message.includes('rate limit') || err.status === 429)) {
-      startButtonCooldown('btn-resend-verification', 'resend-verification-btn-text', 'Resend Verification Email', 60);
+    showToast(friendly, isRateLimit ? 'warning' : 'error');
+
+    if (isRateLimit) {
+      startResendCooldown(60);
     }
   } finally {
+    isAuthSubmitting = false;
     if (spinner) spinner.classList.add('hidden');
-    if (!activeCooldownTimers['btn-resend-verification']) {
-      if (btnText) btnText.textContent = 'Resend Verification Email';
-      if (submitBtn) submitBtn.disabled = false;
-    }
+    updateResendCooldownUI();
   }
 }
 
@@ -651,6 +776,11 @@ async function handleNormalUserLogin(event) {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    if (!data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      throw new Error('Email not confirmed: Your email is not verified yet. Please check your inbox for the activation link.');
+    }
 
     if (remember) localStorage.setItem('SECOND_SHELF_REMEMBER_USER_EMAIL', email);
 
@@ -875,6 +1005,11 @@ async function handleBookStallLogin(event) {
     }
 
     // If Master Administrator signs in here, seamlessly open the Admin Dashboard
+    if (data.user.email.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase() && !data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      throw new Error('Email not confirmed: Your email is not verified yet. Please check your inbox for the activation link.');
+    }
+
     if (data.user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
       if (succBox && succMsg) {
         succMsg.textContent = 'Administrator account verified! Opening Administrator Console...';
@@ -1170,6 +1305,11 @@ async function handleScrapOwnerLogin(event) {
         throw new Error('Invalid credentials for ' + email + '. Note: This is the Administrator account. Please enter your Administrator password or click "Admin Login" in the header.');
       }
       throw error;
+    }
+
+    if (data.user.email.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase() && !data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      throw new Error('Email not confirmed: Your email is not verified yet. Please check your inbox for the activation link.');
     }
 
     if (data.user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
@@ -3006,7 +3146,7 @@ async function resolveUserProfile(user) {
       name: profile?.full_name || user.user_metadata?.full_name || user.email.split('@')[0],
       phone: profile?.phone || user.user_metadata?.phone || '+91 98450 00000',
       role: primaryRole,
-      is_verified: user.email_confirmed_at !== null,
+      is_verified: !!user.email_confirmed_at,
       age_confirmed: profile?.age_confirmed || true,
       roles: roles || []
     };
@@ -6146,7 +6286,19 @@ function showSection(sectionId) {
   });
 
   if (sectionId === 'home') document.getElementById('section-home')?.classList.remove('hidden');
-  if (sectionId === 'dashboard') document.getElementById('section-dashboard')?.classList.remove('hidden');
+  if (sectionId === 'dashboard') {
+    if (!state.currentUser) {
+      showToast('Please sign in to access your dashboard.', 'info');
+      openPortalSelector();
+      return;
+    }
+    if (state.currentUser.role !== 'admin' && !state.currentUser.is_verified) {
+      showToast('Please verify your email address before accessing the dashboard.', 'warning');
+      openResendVerificationModal('user', 'Please verify your email address to access your dashboard.');
+      return;
+    }
+    document.getElementById('section-dashboard')?.classList.remove('hidden');
+  }
   if (sectionId === 'used-books-page') {
     document.getElementById('section-used-books-page')?.classList.remove('hidden');
     renderBookDirectory();
