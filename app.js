@@ -463,7 +463,7 @@ function formatAuthErrorMessage(err, context = 'auth') {
     return 'An account with this email already exists. Please sign in or use Forgot Password to regain access.';
   }
   if (msg.includes('invalid login credentials')) {
-    return 'Invalid email or password. If you recently registered, please ensure you have verified your email first.';
+    return 'Invalid email or password. Please verify your credentials or use Forgot Password to reset.';
   }
   if (msg.includes('email not confirmed')) {
     return 'Your email address is not verified yet. Please check your inbox (and spam folder) for the verification link.';
@@ -714,7 +714,11 @@ async function handleResendVerificationSubmit(event) {
 
     const friendly = formatAuthErrorMessage(err);
     if (errBox && errMsg) {
-      errMsg.textContent = friendly;
+      if (isRateLimit) {
+        errMsg.innerHTML = `<div>${friendly}</div><div class="mt-2.5 pt-2 border-t border-rose-200 flex flex-col gap-1.5"><span class="font-semibold text-slate-700">Account already verified?</span><button type="button" onclick="closeModal('modal-resend-verification'); openLoginModal('user');" class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-1.5 px-3 rounded-lg text-xs text-center shadow transition">Sign In directly to Student Portal</button></div>`;
+      } else {
+        errMsg.textContent = friendly;
+      }
       errBox.classList.remove('hidden');
     }
     showToast(friendly, isRateLimit ? 'warning' : 'error');
