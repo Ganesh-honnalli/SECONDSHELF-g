@@ -208,6 +208,77 @@ function togglePasswordVisibility(inputId, toggleBtn) {
 }
 
 let isPasswordRecoveryMode = false;
+const CANONICAL_PROD_URL = 'https://ganesh-honnalli.github.io/SECONDSHELF-g/';
+const FORGOT_PWD_COOLDOWN_STORAGE_KEY = 'SECOND_SHELF_FORGOT_PWD_COOLDOWN';
+let forgotPwdCooldownInterval = null;
+
+function getForgotPwdCooldownRemaining() {
+  try {
+    const expiry = parseInt(localStorage.getItem(FORGOT_PWD_COOLDOWN_STORAGE_KEY) || '0', 10);
+    const remaining = Math.ceil((expiry - Date.now()) / 1000);
+    return remaining > 0 ? remaining : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function startForgotPwdCooldown(seconds = 60) {
+  try {
+    const expiry = Date.now() + (seconds * 1000);
+    localStorage.setItem(FORGOT_PWD_COOLDOWN_STORAGE_KEY, expiry.toString());
+  } catch (e) {}
+  updateForgotPwdCooldownUI();
+}
+
+function updateForgotPwdCooldownUI() {
+  const btn = document.getElementById('btn-forgot-password');
+  const btnText = document.getElementById('forgot-password-btn-text');
+  const emailInput = document.getElementById('forgot-password-email');
+  const errBox = document.getElementById('forgot-password-error-box');
+  const errMsg = document.getElementById('forgot-password-error-msg');
+
+  if (forgotPwdCooldownInterval) {
+    clearInterval(forgotPwdCooldownInterval);
+    forgotPwdCooldownInterval = null;
+  }
+
+  const checkAndTick = () => {
+    const remaining = getForgotPwdCooldownRemaining();
+    if (remaining > 0) {
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-60', 'cursor-not-allowed');
+      }
+      if (emailInput) emailInput.disabled = true;
+      if (btnText) btnText.textContent = `Please wait (${remaining}s) ⏳`;
+      if (errBox && errMsg) {
+        errMsg.textContent = `⏳ Please wait ${remaining} seconds before requesting another password reset email.`;
+        errBox.classList.remove('hidden');
+      }
+    } else {
+      if (forgotPwdCooldownInterval) {
+        clearInterval(forgotPwdCooldownInterval);
+        forgotPwdCooldownInterval = null;
+      }
+      try { localStorage.removeItem(FORGOT_PWD_COOLDOWN_STORAGE_KEY); } catch (e) {}
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+      if (emailInput) emailInput.disabled = false;
+      if (btnText) btnText.textContent = 'Send Password Reset Link';
+      if (errBox && errMsg && (errMsg.textContent || '').includes('Please wait')) {
+        errBox.classList.add('hidden');
+      }
+    }
+  };
+
+  checkAndTick();
+  const rem = getForgotPwdCooldownRemaining();
+  if (rem > 0) {
+    forgotPwdCooldownInterval = setInterval(checkAndTick, 1000);
+  }
+}
 
 // Forgot Password Flow
 function openForgotPasswordModal(portal = 'user') {
@@ -227,8 +298,12 @@ function openForgotPasswordModal(portal = 'user') {
   const emailInput = document.getElementById('forgot-password-email');
   if (emailInput && emailVal) emailInput.value = emailVal;
 
-  document.getElementById('forgot-password-error-box')?.classList.add('hidden');
-  document.getElementById('forgot-password-success-box')?.classList.add('hidden');
+  const errBox = document.getElementById('forgot-password-error-box');
+  const succBox = document.getElementById('forgot-password-success-box');
+  if (succBox) succBox.classList.add('hidden');
+  if (errBox && !getForgotPwdCooldownRemaining()) errBox.classList.add('hidden');
+
+  updateForgotPwdCooldownUI();
   document.getElementById('modal-forgot-password')?.classList.remove('hidden');
 }
 
@@ -238,6 +313,14 @@ async function handleForgotPasswordSubmit(event) {
     event.stopPropagation();
   }
   if (!supabase) getSupabase();
+
+  // Guard against active cooldown
+  const remainingCooldown = getForgotPwdCooldownRemaining();
+  if (remainingCooldown > 0) {
+    showToast(`Please wait ${remainingCooldown}s before requesting another reset email.`, 'warning');
+    updateForgotPwdCooldownUI();
+    return;
+  }
 
   const emailInput = document.getElementById('forgot-password-email');
   const email = emailInput?.value?.trim();
@@ -268,7 +351,8 @@ async function handleForgotPasswordSubmit(event) {
     submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
   }
 
-  const redirectUrl = window.location.origin + window.location.pathname;
+  // Canonical Production Redirect Destination (Never localhost:3000 on mobile devices)
+  const redirectUrl = CANONICAL_PROD_URL;
 
   try {
     let sentViaBackend = false;
@@ -296,8 +380,12 @@ async function handleForgotPasswordSubmit(event) {
           succBox.classList.remove('hidden');
         }
         showToast('Password reset link dispatched! Please check your inbox.', 'success');
+        startForgotPwdCooldown(60);
         return;
       } else {
+        if (backendData.rateLimited) {
+          startForgotPwdCooldown(backendData.remaining || 60);
+        }
         throw new Error(backendData.error || 'Failed to dispatch reset link.');
       }
     }
@@ -314,6 +402,7 @@ async function handleForgotPasswordSubmit(event) {
       succBox.classList.remove('hidden');
     }
     showToast('Password reset link sent to ' + email, 'success');
+    startForgotPwdCooldown(60);
 
   } catch (err) {
     const isRateLimit = err.status === 429 || 
@@ -321,7 +410,7 @@ async function handleForgotPasswordSubmit(event) {
       err.code === 'over_email_send_rate_limit';
 
     const friendlyMsg = isRateLimit 
-      ? '⏳ Too many password reset requests. Please wait 60 seconds before trying again.'
+      ? '⏳ Too many password reset requests. Supabase rate limit reached. Please wait 60 seconds before trying again.'
       : (err.message || 'Unable to dispatch reset link. Please try again.');
 
     if (errBox && errMsg) {
@@ -329,13 +418,13 @@ async function handleForgotPasswordSubmit(event) {
       errBox.classList.remove('hidden');
     }
     showToast(friendlyMsg, isRateLimit ? 'warning' : 'error');
+
+    if (isRateLimit) {
+      startForgotPwdCooldown(60);
+    }
   } finally {
     if (spinner) spinner.classList.add('hidden');
-    if (btnText) btnText.textContent = 'Send Password Reset Link';
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
-    }
+    updateForgotPwdCooldownUI();
   }
 }
 
@@ -980,7 +1069,71 @@ function inspectAuthRedirect() {
     return;
   }
 
-  // Detect active password recovery callback
+  // Detect direct token_hash verification (Mobile-safe link dispatched in email)
+  const tokenHash = searchParams.get('token_hash') || hashParams.get('token_hash');
+  if (tokenHash) {
+    const isRecovery = type === 'recovery' || search.includes('type=recovery') || hash.includes('type=recovery');
+    const isSignup = type === 'signup' || search.includes('type=signup') || hash.includes('type=signup');
+
+    if (isRecovery) {
+      console.log('Direct token_hash password recovery link detected! Verifying token with Supabase...');
+      isPasswordRecoveryMode = true;
+      showToast('Verifying password reset credentials...', 'info');
+
+      try {
+        if (!supabase) getSupabase();
+        supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: 'recovery'
+        }).then(({ data, error: vErr }) => {
+          if (vErr) {
+            console.error('OTP verification error:', vErr);
+            showToast('Password reset link has expired or is invalid.', 'error');
+            openForgotPasswordModal(state.lastForgotPasswordPortal || 'user');
+            const errBox = document.getElementById('forgot-password-error-box');
+            const errMsg = document.getElementById('forgot-password-error-msg');
+            if (errBox && errMsg) {
+              errMsg.textContent = '⚠️ Your password reset link has expired or has already been used. Please request a fresh reset link below.';
+              errBox.classList.remove('hidden');
+            }
+          } else {
+            console.log('Recovery session verified successfully for:', data?.user?.email);
+            openSetNewPasswordModal(data.session);
+          }
+          try {
+            history.replaceState(null, document.title, window.location.pathname);
+          } catch (e) {}
+        });
+      } catch (e) {
+        console.error('Error in token_hash verifyOtp:', e);
+      }
+      return;
+    } else if (isSignup) {
+      console.log('Direct token_hash account activation link detected! Verifying...');
+      showToast('Activating your SECOND SHELF account...', 'info');
+      try {
+        if (!supabase) getSupabase();
+        supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: 'signup'
+        }).then(({ data, error: vErr }) => {
+          if (vErr) {
+            showToast('Activation link expired or invalid.', 'error');
+            openResendVerificationModal('user', '⚠️ Your activation link has expired or is invalid. Request a new link below.');
+          } else {
+            showToast('Account activated successfully! Please sign in.', 'success');
+            openLoginModal('user');
+          }
+          try {
+            history.replaceState(null, document.title, window.location.pathname);
+          } catch (e) {}
+        });
+      } catch (e) {}
+      return;
+    }
+  }
+
+  // Detect active password recovery callback via hash
   if (type === 'recovery' || hash.includes('type=recovery')) {
     console.log('Recovery type detected in URL redirect hash!');
     isPasswordRecoveryMode = true;

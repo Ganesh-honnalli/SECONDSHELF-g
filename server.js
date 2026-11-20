@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
+const CANONICAL_PROD_URL = 'https://ganesh-honnalli.github.io/SECONDSHELF-g/';
 
 // Simple .env and .env.local parser helper
 function loadEnv() {
@@ -243,7 +244,7 @@ const server = http.createServer((req, res) => {
 
         // Generate official cryptographic verification link
         const env = loadEnv();
-        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const appUrl = (env.VITE_APP_URL || CANONICAL_PROD_URL).replace(/\/$/, '') + '/';
         const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
           type: 'signup',
           email: cleanEmail,
@@ -254,7 +255,11 @@ const server = http.createServer((req, res) => {
 
         if (linkErr) throw linkErr;
 
-        const actionLink = linkData?.properties?.action_link;
+        // Mobile-safe link: Directly opens deployed GitHub Pages with token_hash.
+        // Never redirects to localhost:3000 on mobile devices!
+        const tokenHash = linkData?.properties?.hashed_token;
+        const directActionLink = tokenHash ? `${CANONICAL_PROD_URL}?token_hash=${tokenHash}&type=signup` : linkData?.properties?.action_link;
+        const actionLink = directActionLink;
         const recipientName = foundUser.user_metadata?.full_name || cleanEmail.split('@')[0];
 
         // Record cooldown timestamp
@@ -343,7 +348,7 @@ const server = http.createServer((req, res) => {
 
         // Generate official cryptographic recovery link
         const env = loadEnv();
-        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const appUrl = (env.VITE_APP_URL || CANONICAL_PROD_URL).replace(/\/$/, '') + '/';
         const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
           type: 'recovery',
           email: cleanEmail,
@@ -354,7 +359,11 @@ const server = http.createServer((req, res) => {
 
         if (linkErr) throw linkErr;
 
-        const actionLink = linkData?.properties?.action_link;
+        // Mobile-safe link: Directly opens deployed GitHub Pages with token_hash.
+        // Never redirects to localhost:3000 on mobile devices!
+        const tokenHash = linkData?.properties?.hashed_token;
+        const directActionLink = tokenHash ? `${CANONICAL_PROD_URL}?token_hash=${tokenHash}&type=recovery` : linkData?.properties?.action_link;
+        const actionLink = directActionLink;
         const recipientName = foundUser.user_metadata?.full_name || cleanEmail.split('@')[0];
 
         // Record cooldown timestamp
@@ -559,15 +568,17 @@ const server = http.createServer((req, res) => {
 
         // Generate email activation link and send via SMTP
         const env = loadEnv();
-        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const appUrl = (env.VITE_APP_URL || CANONICAL_PROD_URL).replace(/\/$/, '') + '/';
         const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
           type: 'signup',
           email: email.trim().toLowerCase(),
           options: { redirectTo: appUrl }
         });
 
-        if (linkData?.properties?.action_link) {
-          await sendActivationEmail(email.trim().toLowerCase(), linkData.properties.action_link, ownerName);
+        if (linkData?.properties) {
+          const tokenHash = linkData.properties.hashed_token;
+          const directActionLink = tokenHash ? `${CANONICAL_PROD_URL}?token_hash=${tokenHash}&type=signup` : linkData.properties.action_link;
+          await sendActivationEmail(email.trim().toLowerCase(), directActionLink, ownerName);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -645,15 +656,17 @@ const server = http.createServer((req, res) => {
 
         // Generate email activation link and send via SMTP
         const env = loadEnv();
-        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const appUrl = (env.VITE_APP_URL || CANONICAL_PROD_URL).replace(/\/$/, '') + '/';
         const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
           type: 'signup',
           email: email.trim().toLowerCase(),
           options: { redirectTo: appUrl }
         });
 
-        if (linkData?.properties?.action_link) {
-          await sendActivationEmail(email.trim().toLowerCase(), linkData.properties.action_link, ownerName);
+        if (linkData?.properties) {
+          const tokenHash = linkData.properties.hashed_token;
+          const directActionLink = tokenHash ? `${CANONICAL_PROD_URL}?token_hash=${tokenHash}&type=signup` : linkData.properties.action_link;
+          await sendActivationEmail(email.trim().toLowerCase(), directActionLink, ownerName);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -718,15 +731,17 @@ const server = http.createServer((req, res) => {
 
         // Generate email activation link and send via SMTP
         const env = loadEnv();
-        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const appUrl = (env.VITE_APP_URL || CANONICAL_PROD_URL).replace(/\/$/, '') + '/';
         const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
           type: 'signup',
           email: email.trim().toLowerCase(),
           options: { redirectTo: appUrl }
         });
 
-        if (linkData?.properties?.action_link) {
-          await sendActivationEmail(email.trim().toLowerCase(), linkData.properties.action_link, name);
+        if (linkData?.properties) {
+          const tokenHash = linkData.properties.hashed_token;
+          const directActionLink = tokenHash ? `${CANONICAL_PROD_URL}?token_hash=${tokenHash}&type=signup` : linkData.properties.action_link;
+          await sendActivationEmail(email.trim().toLowerCase(), directActionLink, name);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
