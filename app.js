@@ -207,16 +207,25 @@ function togglePasswordVisibility(inputId, toggleBtn) {
   }
 }
 
+let isPasswordRecoveryMode = false;
+
 // Forgot Password Flow
 function openForgotPasswordModal(portal = 'user') {
+  state.lastForgotPasswordPortal = portal;
+  // Close any login modals that might be open
+  closeModal('modal-login-user');
+  closeModal('modal-login-stall');
+  closeModal('modal-login-scrap');
+  closeModal('modal-login-admin');
+
   let emailVal = '';
-  if (portal === 'admin') emailVal = document.getElementById('admin-login-email')?.value || 'ganeshhonnalli07@gmail.com';
+  if (portal === 'admin') emailVal = document.getElementById('admin-login-email')?.value || MASTER_ADMIN_EMAIL;
   else if (portal === 'stall') emailVal = document.getElementById('stall-login-email')?.value || '';
   else if (portal === 'scrap') emailVal = document.getElementById('scrap-login-email')?.value || '';
   else emailVal = document.getElementById('user-login-email')?.value || '';
 
   const emailInput = document.getElementById('forgot-password-email');
-  if (emailInput) emailInput.value = emailVal;
+  if (emailInput && emailVal) emailInput.value = emailVal;
 
   document.getElementById('forgot-password-error-box')?.classList.add('hidden');
   document.getElementById('forgot-password-success-box')?.classList.add('hidden');
@@ -224,9 +233,14 @@ function openForgotPasswordModal(portal = 'user') {
 }
 
 async function handleForgotPasswordSubmit(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
   if (!supabase) getSupabase();
-  if (event) event.preventDefault();
-  const email = document.getElementById('forgot-password-email')?.value?.trim();
+
+  const emailInput = document.getElementById('forgot-password-email');
+  const email = emailInput?.value?.trim();
   const spinner = document.getElementById('forgot-password-spinner');
   const btnText = document.getElementById('forgot-password-btn-text');
   const submitBtn = document.getElementById('btn-forgot-password');
@@ -238,39 +252,229 @@ async function handleForgotPasswordSubmit(event) {
   if (errBox) errBox.classList.add('hidden');
   if (succBox) succBox.classList.add('hidden');
 
-  if (!email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
     if (errBox && errMsg) {
-      errMsg.textContent = 'Please enter your registered email address.';
+      errMsg.textContent = 'Please enter a valid registered email address.';
       errBox.classList.remove('hidden');
     }
     return;
   }
 
   if (spinner) spinner.classList.remove('hidden');
-  if (btnText) btnText.textContent = 'Sending Reset Link...';
-  if (submitBtn) submitBtn.disabled = true;
+  if (btnText) btnText.textContent = 'Dispatching Link...';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+  }
+
+  const redirectUrl = window.location.origin + window.location.pathname;
 
   try {
+    let sentViaBackend = false;
+    let backendData = null;
+
+    // Try backend endpoint first (with Custom SMTP if configured)
+    try {
+      const apiRes = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (apiRes.status < 500) {
+        backendData = await apiRes.json();
+        sentViaBackend = true;
+      }
+    } catch (e) {
+      // Backend not running (e.g. static host)
+    }
+
+    if (sentViaBackend && backendData) {
+      if (backendData.success) {
+        if (succBox && succMsg) {
+          succMsg.textContent = backendData.message || `Password reset instructions dispatched to ${email}! Please check your inbox and spam folder.`;
+          succBox.classList.remove('hidden');
+        }
+        showToast('Password reset link dispatched! Please check your inbox.', 'success');
+        return;
+      } else {
+        throw new Error(backendData.error || 'Failed to dispatch reset link.');
+      }
+    }
+
+    // Direct Supabase Auth resetPasswordForEmail fallback
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.location.pathname
+      redirectTo: redirectUrl
     });
 
     if (error) throw error;
 
     if (succBox && succMsg) {
-      succMsg.textContent = 'Password reset instructions dispatched to ' + email + '. Please check your inbox.';
+      succMsg.textContent = `Password reset instructions dispatched to ${email}! Please check your inbox and spam folder.`;
       succBox.classList.remove('hidden');
     }
     showToast('Password reset link sent to ' + email, 'success');
+
   } catch (err) {
+    const isRateLimit = err.status === 429 || 
+      (err.message && err.message.toLowerCase().includes('rate limit')) || 
+      err.code === 'over_email_send_rate_limit';
+
+    const friendlyMsg = isRateLimit 
+      ? '⏳ Too many password reset requests. Please wait 60 seconds before trying again.'
+      : (err.message || 'Unable to dispatch reset link. Please try again.');
+
     if (errBox && errMsg) {
-      errMsg.textContent = err.message || 'Unable to dispatch reset link.';
+      errMsg.textContent = friendlyMsg;
       errBox.classList.remove('hidden');
     }
+    showToast(friendlyMsg, isRateLimit ? 'warning' : 'error');
   } finally {
     if (spinner) spinner.classList.add('hidden');
     if (btnText) btnText.textContent = 'Send Password Reset Link';
-    if (submitBtn) submitBtn.disabled = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+    }
+  }
+}
+
+// Set New Password Flow (after clicking recovery link)
+function openSetNewPasswordModal(session = null) {
+  isPasswordRecoveryMode = true;
+  // Close any open modals
+  closeModal('modal-forgot-password');
+  closeModal('modal-login-user');
+  closeModal('modal-login-stall');
+  closeModal('modal-login-scrap');
+  closeModal('modal-login-admin');
+  closeModal('modal-resend-verification');
+
+  const accountLabel = document.getElementById('set-new-password-account-label');
+  const userEmail = session?.user?.email || state.currentUser?.email || '';
+  if (accountLabel && userEmail) {
+    accountLabel.textContent = `Account: ${userEmail}`;
+  } else if (accountLabel) {
+    accountLabel.textContent = 'SECOND SHELF Secure Password Recovery';
+  }
+
+  const passInput = document.getElementById('set-new-password-input');
+  const confirmInput = document.getElementById('set-new-confirm-password-input');
+  if (passInput) passInput.value = '';
+  if (confirmInput) confirmInput.value = '';
+
+  document.getElementById('set-new-password-error-box')?.classList.add('hidden');
+  document.getElementById('set-new-password-success-box')?.classList.add('hidden');
+
+  document.getElementById('modal-set-new-password')?.classList.remove('hidden');
+  showToast('Please create a secure new password for your account.', 'info');
+}
+
+async function handleSetNewPasswordSubmit(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (!supabase) getSupabase();
+
+  const password = document.getElementById('set-new-password-input')?.value;
+  const confirm = document.getElementById('set-new-confirm-password-input')?.value;
+  const errBox = document.getElementById('set-new-password-error-box');
+  const errMsg = document.getElementById('set-new-password-error-msg');
+  const succBox = document.getElementById('set-new-password-success-box');
+  const succMsg = document.getElementById('set-new-password-success-msg');
+  const spinner = document.getElementById('set-new-password-spinner');
+  const btnText = document.getElementById('set-new-password-btn-text');
+  const submitBtn = document.getElementById('btn-set-new-password');
+
+  if (errBox) errBox.classList.add('hidden');
+  if (succBox) succBox.classList.add('hidden');
+
+  if (!password || password.length < 6) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Password must be at least 6 characters long.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (password !== confirm) {
+    if (errBox && errMsg) {
+      errMsg.textContent = 'Passwords do not match. Please ensure both fields are identical.';
+      errBox.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (btnText) btnText.textContent = 'Updating Password...';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+  }
+
+  try {
+    const { data, error } = await supabase.auth.updateUser({
+      password: password
+    });
+
+    if (error) throw error;
+
+    if (succBox && succMsg) {
+      succMsg.textContent = '✅ Password updated successfully! Redirecting to sign in...';
+      succBox.classList.remove('hidden');
+    }
+    showToast('Password updated successfully! Redirecting to login...', 'success');
+
+    // Identify user role to open the correct portal
+    const user = data.user;
+    let targetPortal = state.lastForgotPasswordPortal || 'user';
+    if (user) {
+      try {
+        const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).maybeSingle();
+        if (roleData?.role === 'admin' || user.email === MASTER_ADMIN_EMAIL) targetPortal = 'admin';
+        else if (roleData?.role === 'book_stall') targetPortal = 'stall';
+        else if (roleData?.role === 'raddi_owner') targetPortal = 'scrap';
+        else targetPortal = 'user';
+      } catch (e) {}
+    }
+
+    // Sign out of recovery session so user can log in with new credentials
+    await supabase.auth.signOut();
+    isPasswordRecoveryMode = false;
+
+    // Clean address bar
+    try {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    } catch (e) {}
+
+    setTimeout(() => {
+      closeModal('modal-set-new-password');
+      openLoginModal(targetPortal);
+      // Pre-fill email in the target login modal
+      const emailField = document.getElementById(`${targetPortal}-login-email`);
+      if (emailField && user?.email) emailField.value = user.email;
+      showToast('Please sign in with your new password.', 'info');
+    }, 1200);
+
+  } catch (err) {
+    console.error('Password update error:', err);
+    let msg = err.message || 'Failed to update password. Recovery link may have expired.';
+    if (err.code === 'same_password' || (err.message && err.message.toLowerCase().includes('different from the old'))) {
+      msg = 'The new password must be different from your previous password.';
+    }
+    if (errBox && errMsg) {
+      errMsg.textContent = msg;
+      errBox.classList.remove('hidden');
+    }
+    showToast(msg, 'error');
+  } finally {
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Update Password & Proceed to Login';
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+    }
   }
 }
 
@@ -733,29 +937,56 @@ async function handleResendVerificationSubmit(event) {
   }
 }
 
-// URL Hash Callback Inspector for expired / invalid links
+// URL Hash / Query Callback Inspector for expired, invalid, or recovery links
 function inspectAuthRedirect() {
-  const hash = window.location.hash;
-  if (!hash) return;
+  const hash = window.location.hash || '';
+  const search = window.location.search || '';
+  if (!hash && !search) return;
 
-  const params = new URLSearchParams(hash.replace(/^#/, ''));
-  const error = params.get('error');
-  const errorCode = params.get('error_code');
-  const errorDesc = params.get('error_description');
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
+  const searchParams = new URLSearchParams(search.replace(/^\?/, ''));
+
+  const error = hashParams.get('error') || searchParams.get('error');
+  const errorCode = hashParams.get('error_code') || searchParams.get('error_code');
+  const errorDesc = hashParams.get('error_description') || searchParams.get('error_description');
+  const type = hashParams.get('type') || searchParams.get('type');
 
   if (error || errorCode) {
-    console.warn('Auth redirect error detected in URL hash:', errorCode, errorDesc);
-    let userMsg = '⚠️ Your email verification link has expired or is invalid. Please request a new activation link below.';
-    if (errorCode === 'otp_expired' || (errorDesc && errorDesc.toLowerCase().includes('expired'))) {
-      userMsg = '⚠️ Your verification link has expired. Enter your email below to receive a fresh activation link.';
+    console.warn('Auth redirect error detected:', errorCode, errorDesc);
+    const isRecovery = type === 'recovery' || hash.includes('type=recovery') || (errorDesc && errorDesc.toLowerCase().includes('recovery'));
+    
+    if (isRecovery) {
+      showToast('Password reset link has expired or is invalid.', 'error');
+      openForgotPasswordModal(state.lastForgotPasswordPortal || 'user');
+      const errBox = document.getElementById('forgot-password-error-box');
+      const errMsg = document.getElementById('forgot-password-error-msg');
+      if (errBox && errMsg) {
+        errMsg.textContent = '⚠️ Your password reset link has expired or has already been used. Please request a fresh reset link below.';
+        errBox.classList.remove('hidden');
+      }
+    } else {
+      let userMsg = '⚠️ Your email verification link has expired or is invalid. Please request a new activation link below.';
+      if (errorCode === 'otp_expired' || (errorDesc && errorDesc.toLowerCase().includes('expired'))) {
+        userMsg = '⚠️ Your verification link has expired. Enter your email below to receive a fresh activation link.';
+      }
+      showToast('Verification link expired or invalid.', 'error');
+      openResendVerificationModal('user', userMsg);
     }
-    showToast('Verification link expired or invalid.', 'error');
-    openResendVerificationModal('user', userMsg);
 
     // Clean address bar
     try {
       history.replaceState(null, document.title, window.location.pathname + window.location.search);
     } catch (e) {}
+    return;
+  }
+
+  // Detect active password recovery callback
+  if (type === 'recovery' || hash.includes('type=recovery')) {
+    console.log('Recovery type detected in URL redirect hash!');
+    isPasswordRecoveryMode = true;
+    setTimeout(() => {
+      openSetNewPasswordModal();
+    }, 200);
   }
 }
 
@@ -2911,9 +3142,15 @@ async function initSupabase() {
 
       // Listen for auth state changes
       supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          state.currentSession = session;
-          await resolveUserProfile(session.user);
+        if (event === 'PASSWORD_RECOVERY') {
+          console.log('PASSWORD_RECOVERY event received from Supabase Auth!');
+          isPasswordRecoveryMode = true;
+          openSetNewPasswordModal(session);
+        } else if (event === 'SIGNED_IN' && session?.user) {
+          if (!isPasswordRecoveryMode) {
+            state.currentSession = session;
+            await resolveUserProfile(session.user);
+          }
         } else if (event === 'SIGNED_OUT') {
           state.currentUser = null;
           state.currentSession = null;
@@ -3568,24 +3805,9 @@ function handleSignupRoleChange(role) {
   }
 }
 
-// Real Password Reset Request
+// Legacy alias for password reset submit
 async function handlePasswordResetSubmit(event) {
-  if (event) event.preventDefault();
-  const email = document.getElementById('reset-email')?.value?.trim();
-  if (!email) return;
-
-  if (!supabase) {
-    showToast('Supabase backend not connected.', 'error');
-    return;
-  }
-
-  const { error } = await supabase.auth.resetPasswordForEmail(email);
-  if (error) {
-    showToast(error.message, 'error');
-  } else {
-    closeModal('modal-reset-password');
-    showToast('Password reset link sent to ' + email, 'success');
-  }
+  return handleForgotPasswordSubmit(event);
 }
 
 // Sign Out
@@ -5194,7 +5416,7 @@ async function handleSaveSupabaseConfig(event) {
 
 function openResetPasswordModal() {
   closeModal('modal-auth');
-  document.getElementById('modal-reset-password')?.classList.remove('hidden');
+  openForgotPasswordModal('user');
 }
 
 // ====================================================================

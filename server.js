@@ -117,6 +117,48 @@ async function sendActivationEmail(toEmail, actionLink, fullName) {
   }
 }
 
+async function sendPasswordResetEmail(toEmail, actionLink, fullName) {
+  const transporter = getEmailTransporter();
+  if (!transporter) return false;
+  const env = loadEnv();
+  const from = env.SMTP_FROM || process.env.SMTP_FROM || `"SECOND SHELF" <${env.SMTP_USER || process.env.SMTP_USER}>`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+      <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #059669;">
+        <h1 style="color: #065f46; margin: 0; font-size: 24px; letter-spacing: 1px;">SECOND SHELF</h1>
+        <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">College Textbook & Paper Recycling Marketplace</p>
+      </div>
+      <div style="padding: 24px 0;">
+        <h2 style="color: #1e293b; font-size: 18px; margin-top: 0;">Reset Your Password</h2>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">Hello <strong>${fullName || 'there'}</strong>,</p>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">We received a request to reset the password for your SECOND SHELF account. Click the button below to choose a new password:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${actionLink}" style="background-color: #059669; color: #ffffff; padding: 12px 28px; font-weight: bold; font-size: 14px; text-decoration: none; border-radius: 8px; display: inline-block;">Reset Password</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px; line-height: 1.5;">If the button above does not work, copy and paste this link into your browser:<br/><a href="${actionLink}" style="color: #0284c7; word-break: break-all;">${actionLink}</a></p>
+        <p style="color: #94a3b8; font-size: 11px; margin-top: 24px; line-height: 1.4;">This link is valid for 1 hour. If you did not request a password reset, you can safely ignore this email — your password will remain unchanged.</p>
+      </div>
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; color: #94a3b8; font-size: 11px;">
+        &copy; 2026 SECOND SHELF. All rights reserved.
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: toEmail,
+      subject: 'Reset your SECOND SHELF password',
+      html
+    });
+    return true;
+  } catch (err) {
+    console.error('Nodemailer password reset dispatch error:', err);
+    return false;
+  }
+}
+
 
 const server = http.createServer((req, res) => {
   // Normalize URL
@@ -240,6 +282,106 @@ const server = http.createServer((req, res) => {
           error: is429
             ? 'Supabase email rate limit reached. Please wait 60 seconds before trying again.'
             : (err.message || 'Error processing verification request.')
+        }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Forgot Password (Custom SMTP & Supabase Recovery Flow)
+  if (reqPath === '/api/forgot-password' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email } = JSON.parse(body || '{}');
+        if (!email || !email.includes('@')) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Please provide a valid registered email address.' }));
+          return;
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+
+        // Check backend 60s cooldown per email
+        const now = Date.now();
+        const lastSent = resendCooldowns['pwd_' + cleanEmail] || 0;
+        if (now - lastSent < 60000) {
+          const remaining = Math.ceil((60000 - (now - lastSent)) / 1000);
+          res.writeHead(429, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            success: false,
+            rateLimited: true,
+            error: `Please wait ${remaining} seconds before requesting another password reset email.`,
+            remaining
+          }));
+          return;
+        }
+
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Server missing admin credentials.' }));
+          return;
+        }
+
+        // Look up user in Supabase
+        const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+        if (listErr) throw listErr;
+
+        const foundUser = usersData.users.find(u => u.email?.toLowerCase() === cleanEmail);
+        
+        // Security requirement 6: If user not found, return generic success so account existence is not exposed
+        if (!foundUser) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            success: true,
+            message: 'If an account is associated with this email, password reset instructions have been sent.'
+          }));
+          return;
+        }
+
+        // Generate official cryptographic recovery link
+        const env = loadEnv();
+        const appUrl = (env.VITE_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: cleanEmail,
+          options: {
+            redirectTo: appUrl
+          }
+        });
+
+        if (linkErr) throw linkErr;
+
+        const actionLink = linkData?.properties?.action_link;
+        const recipientName = foundUser.user_metadata?.full_name || cleanEmail.split('@')[0];
+
+        // Record cooldown timestamp
+        resendCooldowns['pwd_' + cleanEmail] = now;
+
+        // Dispatch via Custom SMTP if configured
+        const emailSent = await sendPasswordResetEmail(cleanEmail, actionLink, recipientName);
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: true,
+          method: emailSent ? 'smtp' : 'supabase_link',
+          message: emailSent
+            ? `Password reset link dispatched via SMTP to ${cleanEmail}! Please check your inbox and spam folder.`
+            : `Password reset instructions have been dispatched. Please check your email.`
+        }));
+
+      } catch (err) {
+        console.error('Error in /api/forgot-password:', err);
+        const is429 = err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit'));
+        res.writeHead(is429 ? 429 : 500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: false,
+          rateLimited: is429,
+          error: is429
+            ? 'Too many reset requests. Please wait a moment before trying again.'
+            : (err.message || 'Error processing password reset request.')
         }));
       }
     });
