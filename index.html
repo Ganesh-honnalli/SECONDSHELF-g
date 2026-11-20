@@ -848,12 +848,12 @@
             <label class="text-[11px] font-semibold text-slate-600">Filter by Subcategory</label>
             <select id="book-filter-cat" onchange="renderBookDirectory()" class="w-full mt-1 p-2 text-xs border rounded amazon-focus">
               <option value="all">All Subcategories</option>
-              <option value="Engineering Books">Engineering Books</option>
-              <option value="Degree Books">Degree Books</option>
-              <option value="PUC Books">PUC Books</option>
-              <option value="Class 10th / SSLC Books">Class 10th / SSLC Books</option>
-              <option value="Medical and Competitive Exam Books">Medical & Competitive Exam</option>
-              <option value="Story Books and Novels">Story Books & Novels</option>
+              <option value="Engineering textbooks">Engineering textbooks</option>
+              <option value="Degree textbooks">Degree textbooks</option>
+              <option value="PUC textbooks">PUC textbooks</option>
+              <option value="Class 10 textbooks">Class 10 textbooks</option>
+              <option value="Stories and novels">Stories and novels</option>
+              <option value="Other educational books">Other educational books</option>
             </select>
           </div>
           <div>
@@ -1142,13 +1142,12 @@
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">Category *</label>
                   <select name="item_category" class="w-full text-xs p-2 rounded border border-slate-300 amazon-focus">
-                    <option value="Engineering Books">Engineering Books</option>
-                    <option value="Degree Books">Degree Books (B.Com/B.Sc/B.A)</option>
-                    <option value="PUC Books">PUC Books</option>
-                    <option value="Class 10th / SSLC Books">Class 10th / SSLC</option>
-                    <option value="Medical and Competitive Exam Books">Medical & Competitive Exam</option>
-                    <option value="Story Books and Novels">Story Books & Novels</option>
-                    <option value="Other Educational Books">Other Educational</option>
+                    <option value="Engineering textbooks">Engineering textbooks</option>
+                    <option value="Degree textbooks">Degree textbooks (B.Com/B.Sc/B.A)</option>
+                    <option value="PUC textbooks">PUC textbooks</option>
+                    <option value="Class 10 textbooks">Class 10 textbooks</option>
+                    <option value="Stories and novels">Stories and novels</option>
+                    <option value="Other educational books">Other educational books</option>
                   </select>
                 </div>
                 <div>
@@ -1194,17 +1193,17 @@
                   <div class="border-2 border-dashed border-slate-300 rounded-lg p-2 text-center bg-white hover:border-emerald-500 cursor-pointer transition">
                     <div class="text-sm">📸</div>
                     <div class="text-[10px] font-bold text-slate-700">Front Cover</div>
-                    <input type="file" accept="image/*" class="text-[9px] w-full mt-1 text-slate-500" />
+                    <input type="file" name="book_photo_front" accept="image/*" class="text-[9px] w-full mt-1 text-slate-500" />
                   </div>
                   <div class="border-2 border-dashed border-slate-300 rounded-lg p-2 text-center bg-white hover:border-emerald-500 cursor-pointer transition">
                     <div class="text-sm">📸</div>
                     <div class="text-[10px] font-bold text-slate-700">Back Cover</div>
-                    <input type="file" accept="image/*" class="text-[9px] w-full mt-1 text-slate-500" />
+                    <input type="file" name="book_photo_back" accept="image/*" class="text-[9px] w-full mt-1 text-slate-500" />
                   </div>
                   <div class="border-2 border-dashed border-slate-300 rounded-lg p-2 text-center bg-white hover:border-emerald-500 cursor-pointer transition">
                     <div class="text-sm">📄</div>
                     <div class="text-[10px] font-bold text-slate-700">Inside Page</div>
-                    <input type="file" accept="image/*" class="text-[9px] w-full mt-1 text-slate-500" />
+                    <input type="file" name="book_photo_inside" accept="image/*" class="text-[9px] w-full mt-1 text-slate-500" />
                   </div>
                 </div>
               </div>
@@ -1369,7 +1368,7 @@
             <span class="text-xl">📷</span>
             <div class="text-xs font-bold text-slate-700">Upload Photos of Paper Bundles</div>
             <div class="text-[10px] text-slate-500">Shows recyclers the storage condition and paper purity (JPG, PNG)</div>
-            <input type="file" accept="image/*" class="text-xs mt-2 text-slate-600" />
+            <input type="file" id="raddi-photo-input" accept="image/*" class="text-xs mt-2 text-slate-600" />
           </div>
         </div>
 
@@ -1610,6 +1609,183 @@
           </button>
           <button type="submit" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-4 py-2 rounded text-xs shadow transition">
             Dispatch Offer to Seller →
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: COUNTER-OFFER / PRICE NEGOTIATION (Prompt Section 3)          -->
+  <!-- Enables real price negotiation between User & Stall / Scrap Owner     -->
+  <!-- ==================================================================== -->
+  <div id="modal-counter-offer" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border border-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">🤝</span>
+          <h3 class="text-lg font-bold text-slate-900" id="counter-offer-title">Propose Counteroffer</h3>
+        </div>
+        <button onclick="closeModal('modal-counter-offer')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <form id="form-counter-offer" onsubmit="handleCounterOfferSubmit(event)" class="py-4 space-y-4">
+        <input type="hidden" id="counter-offer-type" />
+        <input type="hidden" id="counter-offer-req-id" />
+        <input type="hidden" id="counter-offer-id" />
+
+        <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-900 space-y-1">
+          <div class="font-bold flex items-center justify-between">
+            <span>Current Offer Amount:</span>
+            <span class="font-black text-slate-900 text-sm" id="counter-current-offer-disp">₹0.00</span>
+          </div>
+          <p class="text-[11px] text-amber-800">Negotiate a fair price. The other party will be notified immediately in real time to accept or revise.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Your Counteroffer Amount (₹) *</label>
+          <input type="number" id="counter-offer-amount" required min="1" step="1" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-black text-emerald-800 text-base" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Reason / Note for Counteroffer</label>
+          <textarea id="counter-offer-notes" rows="2" placeholder="e.g. Books are in pristine condition with no markings; requesting ₹250." class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-counter-offer')" class="px-3.5 py-2 border rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100">
+            Cancel
+          </button>
+          <button type="submit" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-5 py-2 rounded-lg text-xs shadow transition">
+            Dispatch Counteroffer →
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: SCHEDULE SCRAP COLLECTION (Prompt Section 4)                   -->
+  <!-- ==================================================================== -->
+  <div id="modal-schedule-collection" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border border-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">📅</span>
+          <h3 class="text-lg font-bold text-slate-900">Schedule Doorstep Scrap Pickup</h3>
+        </div>
+        <button onclick="closeModal('modal-schedule-collection')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <form id="form-schedule-collection" onsubmit="handleScheduleCollectionSubmit(event)" class="py-4 space-y-4">
+        <input type="hidden" id="sched-scrap-req-id" />
+
+        <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded text-xs text-emerald-900">
+          Set your scheduled pickup date and arrival slot. The seller will be notified with your arrival details.
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Confirmed Pickup Date *</label>
+          <input type="date" id="sched-pickup-date" required class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-bold" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Time Window *</label>
+          <select id="sched-time-slot" required class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-medium">
+            <option value="Morning (9 AM - 12 PM)">Morning (9:00 AM - 12:00 PM)</option>
+            <option value="Afternoon (12 PM - 3 PM)">Afternoon (12:00 PM - 3:00 PM)</option>
+            <option value="Evening (3 PM - 6 PM)">Evening (3:00 PM - 6:00 PM)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Collector Vehicle / Arrival Note</label>
+          <input type="text" id="sched-collector-notes" placeholder="e.g. Arriving with calibrated digital scale in pickup van KA-04-1234" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" />
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-schedule-collection')" class="px-3.5 py-2 border rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100">
+            Cancel
+          </button>
+          <button type="submit" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-5 py-2 rounded-lg text-xs shadow transition">
+            Confirm & Schedule Pickup →
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: DOORSTEP DIGITAL SCALE WEIGHING (Prompt Section 4 & 8)         -->
+  <!-- ==================================================================== -->
+  <div id="modal-record-scrap-weight" class="fixed inset-0 z-50 modal-backdrop hidden overflow-y-auto p-4 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 border border-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">⚖️</span>
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Record Actual Collected Weight</h3>
+            <span class="text-[11px] text-rose-700 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">Strict Minimum 10 kg</span>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-record-scrap-weight')" class="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+      </div>
+
+      <form id="form-record-scrap-weight" onsubmit="handleRecordScrapWeightSubmit(event)" class="py-4 space-y-4">
+        <input type="hidden" id="weigh-scrap-req-id" />
+        <input type="hidden" id="weigh-agreed-rate" />
+
+        <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-1 text-xs">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Agreed Rate per kg:</span>
+            <span class="font-bold text-slate-900" id="weigh-rate-display">₹14.00 / kg</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Initial Estimated Weight:</span>
+            <span class="font-bold text-slate-900" id="weigh-est-weight-display">20 kg</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            Actual Calibrated Scale Weight (kg) * <span class="text-rose-600 font-bold">(≥ 10 kg)</span>
+          </label>
+          <input 
+            type="number" 
+            id="weigh-actual-kg" 
+            required 
+            min="10" 
+            step="0.1" 
+            placeholder="e.g. 24.5" 
+            oninput="recalculateActualPayout()" 
+            class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus font-black text-slate-900 text-base" 
+          />
+          <div id="weigh-kg-error" class="hidden text-[11px] text-rose-600 font-bold mt-1">
+            ⛔ Minimum 10 kg is required. Submissions below 10 kg are declined.
+          </div>
+        </div>
+
+        <div class="bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex items-center justify-between">
+          <div>
+            <div class="text-[11px] text-emerald-800 font-bold uppercase tracking-wider">Final Payable Payout</div>
+            <div class="text-2xl font-black text-emerald-950" id="weigh-final-payout-display">₹0.00</div>
+          </div>
+          <div class="text-[11px] text-slate-500 text-right">
+            Calculated as:<br />Actual kg × Rate/kg
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Digital Scale / Purity Remarks</label>
+          <input type="text" id="weigh-scale-remarks" placeholder="e.g. Weighed on portable digital hanging scale; pure dry newspaper" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 amazon-focus" />
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-record-scrap-weight')" class="px-3.5 py-2 border rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100">
+            Cancel
+          </button>
+          <button type="submit" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-5 py-2 rounded-lg text-xs shadow transition">
+            Confirm Weight & Set Payout →
           </button>
         </div>
       </form>
@@ -3059,6 +3235,6 @@
   </div>
 
 <script src="supabase-config.js?v=1794165948831"></script>
-  <script src="app.js?v=20261114_login_fix_v8"></script>
+  <script src="app.js?v=20261120_marketplace_v1"></script>
 </body>
 </html>

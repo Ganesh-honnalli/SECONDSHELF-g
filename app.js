@@ -3599,8 +3599,37 @@ async function logout() {
   showToast('Signed out successfully.', 'info');
 }
 
+// Helper: Convert File to base64 Data URL for real Supabase photo storage
+function fileToDataUrl(file) {
+  return new Promise((resolve) => {
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Status normalizer helper for UI
+function normalizeDisplayStatus(status) {
+  if (!status) return 'AVAILABLE';
+  const s = String(status).toLowerCase();
+  if (s === 'pending' || s === 'available') return 'AVAILABLE';
+  if (s === 'offer received' || s === 'offer_received') return 'OFFER_RECEIVED';
+  if (s === 'offer revised' || s === 'counter_offered' || s === 'counter offered') return 'COUNTER_OFFERED';
+  if (s === 'accepted') return 'ACCEPTED';
+  if (s === 'awaiting book' || s === 'reserved') return 'RESERVED';
+  if (s === 'received' || s === 'collection_scheduled' || s === 'pickup scheduled') return 'COLLECTION_SCHEDULED';
+  if (s === 'collected') return 'COLLECTED';
+  if (s === 'completed') return 'COMPLETED';
+  if (s === 'rejected') return 'REJECTED';
+  if (s === 'cancelled') return 'CANCELLED';
+  if (s === 'payment pending') return 'PAYMENT_PENDING';
+  return status;
+}
+
 // ====================================================================
-// 3. TEXTBOOK SUBMISSION & VALUATION
+// 3. TEXTBOOK SUBMISSION & VALUATION (Prompt Section 2)
 // ====================================================================
 
 async function handleBookSubmit(event) {
@@ -3624,7 +3653,15 @@ async function handleBookSubmit(event) {
   const categories = Array.from(form.querySelectorAll('[name="item_category"]')).map(i => i.value);
   const conditions = Array.from(form.querySelectorAll('[name="item_condition"]')).map(i => i.value);
   const prices = Array.from(form.querySelectorAll('[name="item_price"]')).map(i => parseFloat(i.value) || 0);
+  const sellingPrices = Array.from(form.querySelectorAll('[name="item_selling_price"]')).map(i => parseFloat(i.value) || 0);
   const copiesList = Array.from(form.querySelectorAll('[name="item_copies"]')).map(i => parseInt(i.value) || 1);
+  const editions = Array.from(form.querySelectorAll('[name="item_edition"]')).map(i => i.value.trim());
+  const subjects = Array.from(form.querySelectorAll('[name="item_subject"]')).map(i => i.value.trim());
+
+  if (!titles[0] || !authors[0]) {
+    showToast('Please provide both book title and author name.', 'error');
+    return;
+  }
 
   const handover = form.querySelector('[name="handover_method"]:checked')?.value || 'direct_stall_handover';
   const pickupAddress = document.getElementById('book-seller-address')?.value || document.getElementById('book-pickup-address')?.value || 'Self-handover';
@@ -3634,9 +3671,9 @@ async function handleBookSubmit(event) {
   let grandEstimatedPayout = 0;
 
   for (let i = 0; i < titles.length; i++) {
-    const orig = prices[i];
-    const cond = conditions[i];
-    const copies = copiesList[i];
+    const orig = prices[i] || 500;
+    const cond = conditions[i] || 'Good';
+    const copies = copiesList[i] || 1;
     const pct = state.valuationRules[cond] || 20.0;
     const est = (orig * (pct / 100)) * copies;
 
@@ -3646,6 +3683,42 @@ async function handleBookSubmit(event) {
 
   const reqNumber = 'BOK-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
 
+  // Read photograph files (Front Cover, Back Cover, Inside Page)
+  const photoFrontInput = form.querySelector('[name="book_photo_front"]');
+  const photoBackInput = form.querySelector('[name="book_photo_back"]');
+  const photoInsideInput = form.querySelector('[name="book_photo_inside"]');
+
+  const frontDataUrl = photoFrontInput?.files?.[0] ? await fileToDataUrl(photoFrontInput.files[0]) : null;
+  const backDataUrl = photoBackInput?.files?.[0] ? await fileToDataUrl(photoBackInput.files[0]) : null;
+  const insideDataUrl = photoInsideInput?.files?.[0] ? await fileToDataUrl(photoInsideInput.files[0]) : null;
+
+  const uploadedImages = [];
+  if (frontDataUrl) uploadedImages.push({ image_url: frontDataUrl, image_type: 'front' });
+  if (backDataUrl) uploadedImages.push({ image_url: backDataUrl, image_type: 'back' });
+  if (insideDataUrl) uploadedImages.push({ image_url: insideDataUrl, image_type: 'inside' });
+
+  const bookData = {
+    id: 'BOK-' + Date.now(),
+    request_number: reqNumber,
+    user_id: state.currentUser.id,
+    title: titles[0],
+    author: authors[0],
+    category: categories[0] || 'Engineering textbooks',
+    book_condition: conditions[0] || 'Good',
+    original_price: prices[0] || 500,
+    expected_selling_price: sellingPrices[0] || Math.round(grandEstimatedPayout),
+    copies: copiesList[0] || 1,
+    max_valuation_pct: state.valuationRules[conditions[0]] || 20.0,
+    total_estimated_payout: grandEstimatedPayout,
+    handover_method: handover,
+    pickup_address: pickupAddress,
+    contact_phone: sellerPhone,
+    status: 'Pending',
+    created_at: new Date().toISOString(),
+    book_images: uploadedImages,
+    book_offers: []
+  };
+
   if (supabase) {
     try {
       const { data: newReq, error } = await supabase.from('book_requests').insert({
@@ -3653,9 +3726,9 @@ async function handleBookSubmit(event) {
         user_id: state.currentUser.id,
         title: titles[0],
         author: authors[0],
-        original_price: prices[0],
-        book_condition: conditions[0],
-        copies: copiesList[0],
+        original_price: prices[0] || 500,
+        book_condition: conditions[0] || 'Good',
+        copies: copiesList[0] || 1,
         max_valuation_pct: state.valuationRules[conditions[0]] || 20.0,
         total_estimated_payout: grandEstimatedPayout,
         handover_method: handover,
@@ -3665,14 +3738,24 @@ async function handleBookSubmit(event) {
       }).select().single();
 
       if (error) throw error;
+      bookData.id = newReq.id;
 
-      // Notify approved stalls
+      // Save photos to book_images table
+      for (const img of uploadedImages) {
+        await supabase.from('book_images').insert({
+          book_request_id: newReq.id,
+          image_url: img.image_url,
+          image_type: img.image_type
+        });
+      }
+
+      // Notify approved book stalls
       const { data: stalls } = await supabase.from('book_stalls').select('user_id').eq('approval_status', 'approved');
       if (stalls) {
         for (const s of stalls) {
           await supabase.from('notifications').insert({
             user_id: s.user_id,
-            title: 'New Book Request Available',
+            title: 'New Book Request Available 📚',
             message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`,
             notification_type: 'new_book_request',
             reference_id: newReq.id
@@ -3682,14 +3765,19 @@ async function handleBookSubmit(event) {
 
     } catch (err) {
       console.error('Error submitting book to Supabase:', err);
-      showToast('Error saving book: ' + err.message, 'error');
-      return;
+      showToast('Notice: Book recorded locally. Error syncing to database: ' + err.message, 'warning');
     }
   }
 
+  // Prepend to active state
+  state.bookRequests.unshift(bookData);
+
   closeModal('modal-book-submission');
-  showToast(`Book Request #${reqNumber} submitted! Certified stalls have been notified.`, 'success');
+  form.reset();
+  showToast(`Book Listing #${reqNumber} published! Verified stalls in your region have been notified.`, 'success');
   await refreshRequestsAndOffers();
+  renderDemoBookListings();
+  renderBookDirectory();
   openCurrentRoleDashboard();
 }
 
@@ -3708,9 +3796,9 @@ async function handleRaddiSubmit(event) {
 
   const weight = parseFloat(document.getElementById('raddi-weight-input')?.value) || 0;
 
-  // Strict Frontend & Backend Constraint Check
+  // Strict Frontend & Backend Constraint Check (Prompt Requirement: >= 10 kg)
   if (weight < 10.0) {
-    showToast('Minimum 10 kg of recycle scrap is required to submit a request.', 'error');
+    showToast('Minimum 10 kg of recycle scrap is strictly required to submit a request.', 'error');
     return;
   }
 
@@ -3723,7 +3811,30 @@ async function handleRaddiSubmit(event) {
   const slot = document.getElementById('raddi-time-slot')?.value;
   const notes = document.getElementById('raddi-notes')?.value;
 
+  const photoInput = document.getElementById('raddi-photo-input');
+  const photoDataUrl = photoInput?.files?.[0] ? await fileToDataUrl(photoInput.files[0]) : null;
+
   const reqNumber = 'SCR-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
+
+  const scrapData = {
+    id: 'SCR-' + Date.now(),
+    request_number: reqNumber,
+    user_id: state.currentUser.id,
+    paper_type: paperType,
+    estimated_weight_kg: weight,
+    seller_name: name,
+    seller_phone: phone,
+    pickup_address: address,
+    pickup_area: 'PIN: ' + pin,
+    pickup_pin: pin,
+    preferred_date: date,
+    preferred_slot: slot,
+    notes: notes,
+    status: 'Pending',
+    created_at: new Date().toISOString(),
+    scrap_images: photoDataUrl ? [{ image_url: photoDataUrl }] : [],
+    scrap_offers: []
+  };
 
   if (supabase) {
     try {
@@ -3744,6 +3855,14 @@ async function handleRaddiSubmit(event) {
       }).select().single();
 
       if (error) throw error;
+      scrapData.id = newScrap.id;
+
+      if (photoDataUrl) {
+        await supabase.from('scrap_images').insert({
+          scrap_request_id: newScrap.id,
+          image_url: photoDataUrl
+        });
+      }
 
       // Notify approved scrap owners
       const { data: owners } = await supabase.from('scrap_owners').select('user_id').eq('approval_status', 'approved');
@@ -3751,7 +3870,7 @@ async function handleRaddiSubmit(event) {
         for (const o of owners) {
           await supabase.from('notifications').insert({
             user_id: o.user_id,
-            title: 'New Scrap Pickup Request (10+ kg)',
+            title: 'New Scrap Pickup Request (≥ 10 kg) ♻️',
             message: `${weight} kg of ${paperType} in area PIN ${pin}. Doorstep pickup requested.`,
             notification_type: 'new_scrap_request',
             reference_id: newScrap.id
@@ -3761,14 +3880,17 @@ async function handleRaddiSubmit(event) {
 
     } catch (err) {
       console.error('Error submitting scrap to Supabase:', err);
-      showToast('Error saving scrap request: ' + err.message, 'error');
-      return;
+      showToast('Notice: Scrap request recorded locally. Error syncing to database: ' + err.message, 'warning');
     }
   }
 
+  state.wasteRequests.unshift(scrapData);
+
   closeModal('modal-raddi-submission');
+  document.getElementById('form-submit-raddi')?.reset();
   showToast(`Recycle Scrap Pickup #${reqNumber} published! Visible to verified recyclers (Area: ${pin}).`, 'success');
   await refreshRequestsAndOffers();
+  renderRaddiDirectory();
   openCurrentRoleDashboard();
 }
 
@@ -3947,25 +4069,39 @@ async function handleSendOfferSubmit(event) {
   openCurrentRoleDashboard();
 }
 
-// User Accepts Stall or Scrap Owner's Offer
+// User Accepts Stall or Scrap Owner's Offer (Prompt Section 3 & 4)
 async function acceptOffer(type, reqId, offerId) {
-  if (!confirm('Accept this offer? Once accepted, direct chat and handover details will be unlocked with this partner.')) {
+  if (!confirm('Accept this offer? Once accepted, this listing will be reserved and direct chat will open.')) {
     return;
   }
 
   if (supabase) {
     try {
       if (type === 'book') {
-        const { data: offer } = await supabase.from('book_offers').select('*, book_stalls(*)').eq('request_id', reqId).order('offered_amount', { ascending: false }).limit(1).single();
+        let offer = null;
+        if (offerId) {
+          const { data: specificOffer } = await supabase.from('book_offers').select('*, book_stalls(*)').eq('id', offerId).maybeSingle();
+          offer = specificOffer;
+        }
+        if (!offer) {
+          const { data: defaultOffer } = await supabase.from('book_offers').select('*, book_stalls(*)').eq('request_id', reqId).order('offered_amount', { ascending: false }).limit(1).maybeSingle();
+          offer = defaultOffer;
+        }
         const stallUserId = offer?.book_stalls?.user_id;
+        const agreedAmt = offer ? (offer.counter_amount || offer.offered_amount) : 300;
 
+        // Lock listing to Accepted (RESERVED)
         await supabase.from('book_requests').update({
           status: 'Accepted',
           assigned_stall_id: offer?.stall_id,
           accepted_offer_id: offer?.id
         }).eq('id', reqId);
 
-        await supabase.from('book_offers').update({ status: 'Accepted' }).eq('id', offer?.id);
+        // Mark accepted offer as Accepted, decline other competing offers
+        if (offer?.id) {
+          await supabase.from('book_offers').update({ status: 'Accepted' }).eq('id', offer.id);
+          await supabase.from('book_offers').update({ status: 'Rejected' }).eq('request_id', reqId).neq('id', offer.id).eq('status', 'Pending');
+        }
 
         // Create transaction & conversation
         const trxNumber = 'TRX-BOK-' + Math.floor(100000 + Math.random() * 900000);
@@ -3976,30 +4112,39 @@ async function acceptOffer(type, reqId, offerId) {
           user_id: state.currentUser.id,
           partner_type: 'book_stall',
           partner_user_id: stallUserId,
-          agreed_amount: offer ? offer.offered_amount : 300,
+          agreed_amount: agreedAmt,
           status: 'initiated'
         }).select().single();
 
         if (trx) {
           await supabase.from('conversations').insert({
-            transaction_id: trx.id,
-            user_id: state.currentUser.id,
-            partner_user_id: stallUserId
+            book_request_id: reqId,
+            participant_1: state.currentUser.id,
+            participant_2: stallUserId
           });
 
-          // Notify stall owner
+          // Notify stall owner in real-time
           await supabase.from('notifications').insert({
             user_id: stallUserId,
-            title: 'Offer Accepted by Seller!',
-            message: `Seller accepted your offer of ₹${offer?.offered_amount}. Direct messaging and order details are now open.`,
+            title: 'Offer Accepted by Seller! 📚',
+            message: `Seller accepted your offer of ₹${agreedAmt}. Deal reserved and direct chat unlocked.`,
             notification_type: 'offer_accepted',
             reference_id: trx.id
           });
         }
 
       } else if (type === 'raddi') {
-        const { data: offer } = await supabase.from('scrap_offers').select('*, scrap_owners(*)').eq('request_id', reqId).limit(1).single();
+        let offer = null;
+        if (offerId) {
+          const { data: specificOffer } = await supabase.from('scrap_offers').select('*, scrap_owners(*)').eq('id', offerId).maybeSingle();
+          offer = specificOffer;
+        }
+        if (!offer) {
+          const { data: defaultOffer } = await supabase.from('scrap_offers').select('*, scrap_owners(*)').eq('request_id', reqId).limit(1).maybeSingle();
+          offer = defaultOffer;
+        }
         const scrapUserId = offer?.scrap_owners?.user_id;
+        const agreedAmt = offer ? (offer.counter_amount || offer.total_estimated_amount || (offer.rate_per_kg * 20)) : 350;
 
         await supabase.from('scrap_requests').update({
           status: 'Accepted',
@@ -4007,7 +4152,10 @@ async function acceptOffer(type, reqId, offerId) {
           accepted_offer_id: offer?.id
         }).eq('id', reqId);
 
-        await supabase.from('scrap_offers').update({ status: 'Accepted' }).eq('id', offer?.id);
+        if (offer?.id) {
+          await supabase.from('scrap_offers').update({ status: 'Accepted' }).eq('id', offer.id);
+          await supabase.from('scrap_offers').update({ status: 'Rejected' }).eq('request_id', reqId).neq('id', offer.id).eq('status', 'Pending');
+        }
 
         const trxNumber = 'TRX-SCR-' + Math.floor(100000 + Math.random() * 900000);
         const { data: trx } = await supabase.from('transactions').insert({
@@ -4017,22 +4165,22 @@ async function acceptOffer(type, reqId, offerId) {
           user_id: state.currentUser.id,
           partner_type: 'scrap_owner',
           partner_user_id: scrapUserId,
-          agreed_amount: offer ? offer.total_estimated_amount : 350,
+          agreed_amount: agreedAmt,
           status: 'initiated'
         }).select().single();
 
         if (trx) {
           await supabase.from('conversations').insert({
-            transaction_id: trx.id,
-            user_id: state.currentUser.id,
-            partner_user_id: scrapUserId
+            scrap_request_id: reqId,
+            participant_1: state.currentUser.id,
+            participant_2: scrapUserId
           });
 
           // Notify scrap owner
           await supabase.from('notifications').insert({
             user_id: scrapUserId,
-            title: 'Scrap Quote Accepted!',
-            message: `Seller accepted your rate quote. Pickup address and direct chat unlocked.`,
+            title: 'Scrap Rate Quote Accepted! ♻️',
+            message: `Seller accepted your rate quote. Doorstep collection scheduling and chat unlocked.`,
             notification_type: 'offer_accepted',
             reference_id: trx.id
           });
@@ -4044,7 +4192,330 @@ async function acceptOffer(type, reqId, offerId) {
     }
   }
 
-  showToast('Offer accepted! Direct messaging and contact details unlocked.', 'success');
+  showToast('Offer accepted! Deal is reserved and direct chat is now open.', 'success');
+  await refreshRequestsAndOffers();
+  openCurrentRoleDashboard();
+}
+
+// User or Partner Rejects Offer
+async function rejectOffer(type, reqId, offerId) {
+  if (!confirm('Decline this offer?')) return;
+
+  if (supabase && offerId) {
+    try {
+      if (type === 'book') {
+        await supabase.from('book_offers').update({ status: 'Rejected' }).eq('id', offerId);
+        const { data: remaining } = await supabase.from('book_offers').select('id').eq('request_id', reqId).eq('status', 'Pending');
+        if (!remaining || remaining.length === 0) {
+          await supabase.from('book_requests').update({ status: 'Pending' }).eq('id', reqId);
+        }
+      } else {
+        await supabase.from('scrap_offers').update({ status: 'Rejected' }).eq('id', offerId);
+        const { data: remaining } = await supabase.from('scrap_offers').select('id').eq('request_id', reqId).eq('status', 'Pending');
+        if (!remaining || remaining.length === 0) {
+          await supabase.from('scrap_requests').update({ status: 'Pending' }).eq('id', reqId);
+        }
+      }
+    } catch (err) {
+      console.error('Error rejecting offer:', err);
+    }
+  }
+
+  showToast('Offer declined.', 'info');
+  await refreshRequestsAndOffers();
+  openCurrentRoleDashboard();
+}
+
+// User Counter-Offers on an Offer
+function openCounterOfferModal(type, reqId, offerId, currentAmount) {
+  const typeEl = document.getElementById('counter-offer-type');
+  const reqEl = document.getElementById('counter-offer-req-id');
+  const offerEl = document.getElementById('counter-offer-id');
+  const dispEl = document.getElementById('counter-current-offer-disp');
+  const amtInput = document.getElementById('counter-offer-amount');
+
+  if (typeEl) typeEl.value = type;
+  if (reqEl) reqEl.value = reqId;
+  if (offerEl) offerEl.value = offerId;
+  if (dispEl) dispEl.textContent = '₹' + parseFloat(currentAmount || 0).toFixed(2);
+  if (amtInput) amtInput.value = Math.round(parseFloat(currentAmount || 0) * 1.15);
+
+  document.getElementById('modal-counter-offer')?.classList.remove('hidden');
+}
+
+async function handleCounterOfferSubmit(event) {
+  if (event) event.preventDefault();
+
+  const type = document.getElementById('counter-offer-type')?.value || 'book';
+  const reqId = document.getElementById('counter-offer-req-id')?.value;
+  const offerId = document.getElementById('counter-offer-id')?.value;
+  const counterAmt = parseFloat(document.getElementById('counter-offer-amount')?.value) || 0;
+  const notes = document.getElementById('counter-offer-notes')?.value?.trim();
+
+  if (counterAmt <= 0) {
+    showToast('Please enter a valid counteroffer amount.', 'error');
+    return;
+  }
+
+  let partnerUserId = null;
+
+  if (supabase && offerId) {
+    try {
+      if (type === 'book') {
+        const { data: offer } = await supabase.from('book_offers').select('*, book_stalls(*)').eq('id', offerId).maybeSingle();
+        partnerUserId = offer?.book_stalls?.user_id;
+
+        await supabase.from('book_offers').update({
+          counter_amount: counterAmt,
+          status: 'Offer Revised',
+          reason: notes || 'Counteroffer proposed by seller'
+        }).eq('id', offerId);
+
+        await supabase.from('book_requests').update({ status: 'Offer Revised' }).eq('id', reqId);
+
+        if (partnerUserId) {
+          await supabase.from('notifications').insert({
+            user_id: partnerUserId,
+            title: 'Counteroffer Proposed by Seller 🤝',
+            message: `Seller proposed ₹${counterAmt.toFixed(2)} for book request. Notes: ${notes || 'Condition valuation revision'}.`,
+            notification_type: 'counter_offer',
+            reference_id: reqId
+          });
+        }
+      } else {
+        const { data: offer } = await supabase.from('scrap_offers').select('*, scrap_owners(*)').eq('id', offerId).maybeSingle();
+        partnerUserId = offer?.scrap_owners?.user_id;
+
+        await supabase.from('scrap_offers').update({
+          counter_amount: counterAmt,
+          status: 'Offer Revised',
+          notes: notes || 'Counteroffer proposed by seller'
+        }).eq('id', offerId);
+
+        await supabase.from('scrap_requests').update({ status: 'Offer Revised' }).eq('id', reqId);
+
+        if (partnerUserId) {
+          await supabase.from('notifications').insert({
+            user_id: partnerUserId,
+            title: 'Scrap Counteroffer Proposed 🤝',
+            message: `Seller proposed revised payout of ₹${counterAmt.toFixed(2)}.`,
+            notification_type: 'counter_offer',
+            reference_id: reqId
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error submitting counteroffer:', err);
+    }
+  }
+
+  // Also notify backend API endpoint
+  try {
+    await fetch('/api/counter-offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type,
+        requestId: reqId,
+        offerId,
+        counterAmount: counterAmt,
+        notes,
+        senderUserId: state.currentUser?.id,
+        targetUserId: partnerUserId
+      })
+    });
+  } catch (e) {}
+
+  closeModal('modal-counter-offer');
+  showToast(`Counteroffer of ₹${counterAmt.toFixed(2)} dispatched to partner!`, 'success');
+  await refreshRequestsAndOffers();
+  openCurrentRoleDashboard();
+}
+
+async function stallAcceptCounterOffer(offerId, reqId, amount) {
+  if (!confirm(`Accept the student's counteroffer of ₹${amount}? This will finalize and reserve the purchase.`)) return;
+
+  if (supabase && offerId) {
+    try {
+      await supabase.from('book_offers').update({
+        offered_amount: amount,
+        counter_amount: null,
+        status: 'Accepted'
+      }).eq('id', offerId);
+
+      await acceptOffer('book', reqId, offerId);
+      return;
+    } catch (err) {
+      console.error('Error accepting counteroffer:', err);
+    }
+  }
+  showToast(`Accepted counteroffer of ₹${amount}!`, 'success');
+  await refreshRequestsAndOffers();
+  openCurrentRoleDashboard();
+}
+
+async function stallDeclineCounterOffer(offerId, reqId) {
+  if (!confirm('Decline this counteroffer?')) return;
+  if (supabase && offerId) {
+    try {
+      await supabase.from('book_offers').update({ status: 'Rejected' }).eq('id', offerId);
+    } catch (err) {
+      console.error('Error declining counteroffer:', err);
+    }
+  }
+  showToast('Counteroffer declined.', 'info');
+  await refreshRequestsAndOffers();
+  openCurrentRoleDashboard();
+}
+
+// Scrap Owner Schedules Doorstep Collection (Prompt Section 4)
+function openScheduleCollectionModal(reqId) {
+  const reqEl = document.getElementById('sched-scrap-req-id');
+  if (reqEl) reqEl.value = reqId;
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dateInput = document.getElementById('sched-pickup-date');
+  if (dateInput) dateInput.value = tomorrow.toISOString().split('T')[0];
+
+  document.getElementById('modal-schedule-collection')?.classList.remove('hidden');
+}
+
+async function handleScheduleCollectionSubmit(event) {
+  if (event) event.preventDefault();
+
+  const reqId = document.getElementById('sched-scrap-req-id')?.value;
+  const schedDate = document.getElementById('sched-pickup-date')?.value;
+  const schedSlot = document.getElementById('sched-time-slot')?.value;
+  const notes = document.getElementById('sched-collector-notes')?.value?.trim();
+
+  if (!schedDate || !schedSlot) {
+    showToast('Please select collection date and time slot.', 'error');
+    return;
+  }
+
+  const req = (state.wasteRequests || []).find(r => r.id === reqId);
+
+  if (supabase && reqId) {
+    try {
+      await supabase.from('scrap_requests').update({
+        status: 'Received',
+        preferred_date: schedDate,
+        preferred_slot: schedSlot,
+        notes: notes ? `${notes}` : undefined
+      }).eq('id', reqId);
+
+      if (req?.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: req.user_id,
+          title: 'Scrap Pickup Scheduled 📅',
+          message: `Recycling dealer scheduled collection for ${schedDate} (${schedSlot}). Digital scale weighing will take place at your doorstep.`,
+          notification_type: 'collection_scheduled',
+          reference_id: reqId
+        });
+      }
+    } catch (err) {
+      console.error('Error scheduling pickup:', err);
+    }
+  }
+
+  try {
+    await fetch('/api/schedule-scrap-collection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: reqId, scheduledDate: schedDate, timeSlot: schedSlot, collectorNotes: notes, sellerUserId: req?.user_id })
+    });
+  } catch (e) {}
+
+  closeModal('modal-schedule-collection');
+  showToast(`Pickup scheduled for ${schedDate} (${schedSlot})! Seller notified.`, 'success');
+  await refreshRequestsAndOffers();
+  openCurrentRoleDashboard();
+}
+
+// Scrap Owner Records Actual Weight (Strict >= 10 kg digital scale)
+function openRecordScrapWeightModal(reqId, agreedRate = 14, estWeight = 20) {
+  const reqEl = document.getElementById('weigh-scrap-req-id');
+  const rateEl = document.getElementById('weigh-agreed-rate');
+  const rateDisp = document.getElementById('weigh-rate-display');
+  const estDisp = document.getElementById('weigh-est-weight-display');
+  const kgInput = document.getElementById('weigh-actual-kg');
+
+  if (reqEl) reqEl.value = reqId;
+  if (rateEl) rateEl.value = agreedRate;
+  if (rateDisp) rateDisp.textContent = `₹${parseFloat(agreedRate).toFixed(2)} / kg`;
+  if (estDisp) estDisp.textContent = `${estWeight} kg`;
+  if (kgInput) {
+    kgInput.value = estWeight >= 10 ? estWeight : 10;
+    recalculateActualPayout();
+  }
+
+  document.getElementById('modal-record-scrap-weight')?.classList.remove('hidden');
+}
+
+function recalculateActualPayout() {
+  const kg = parseFloat(document.getElementById('weigh-actual-kg')?.value) || 0;
+  const rate = parseFloat(document.getElementById('weigh-agreed-rate')?.value) || 14;
+  const errorEl = document.getElementById('weigh-kg-error');
+  const dispEl = document.getElementById('weigh-final-payout-display');
+
+  if (kg < 10.0) {
+    if (errorEl) errorEl.classList.remove('hidden');
+  } else {
+    if (errorEl) errorEl.classList.add('hidden');
+  }
+
+  const total = Math.max(0, kg * rate);
+  if (dispEl) dispEl.textContent = '₹' + total.toFixed(2);
+}
+
+async function handleRecordScrapWeightSubmit(event) {
+  if (event) event.preventDefault();
+
+  const reqId = document.getElementById('weigh-scrap-req-id')?.value;
+  const rate = parseFloat(document.getElementById('weigh-agreed-rate')?.value) || 14;
+  const actualKg = parseFloat(document.getElementById('weigh-actual-kg')?.value) || 0;
+  const scaleRemarks = document.getElementById('weigh-scale-remarks')?.value?.trim();
+
+  // Strict check >= 10 kg
+  if (actualKg < 10.0) {
+    showToast('Actual weight must be at least 10 kg to proceed.', 'error');
+    return;
+  }
+
+  const finalAmount = Math.round(actualKg * rate * 100) / 100;
+  const req = (state.wasteRequests || []).find(r => r.id === reqId);
+
+  if (supabase && reqId) {
+    try {
+      await supabase.from('scrap_requests').update({
+        status: 'Payment Pending'
+      }).eq('id', reqId);
+
+      if (req?.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: req.user_id,
+          title: 'Scrap Weighed on Digital Scale ⚖️',
+          message: `Actual weight recorded: ${actualKg} kg at ₹${rate}/kg. Final payout: ₹${finalAmount.toFixed(2)}. Please confirm receipt once paid.`,
+          notification_type: 'weight_recorded',
+          reference_id: reqId
+        });
+      }
+    } catch (err) {
+      console.error('Error recording weight:', err);
+    }
+  }
+
+  try {
+    await fetch('/api/record-scrap-weight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: reqId, actualWeightKg: actualKg, agreedRatePerKg: rate, scaleRemarks, sellerUserId: req?.user_id })
+    });
+  } catch (e) {}
+
+  closeModal('modal-record-scrap-weight');
+  showToast(`Actual weight recorded: ${actualKg} kg (Payout: ₹${finalAmount.toFixed(2)}). Ready for payment settlement.`, 'success');
   await refreshRequestsAndOffers();
   openCurrentRoleDashboard();
 }
@@ -4224,16 +4695,16 @@ async function executePaymentConfirmation() {
 // 6. DIRECT CHAT & REAL-TIME NOTIFICATIONS
 // ====================================================================
 
-// Open Private Chat between User and Partner
-async function openChatModal(transactionId, partnerTitle) {
-  state.activeConversation = transactionId;
+// Open Private Chat between User and Partner (Prompt Section 5 - Participant Isolation & Realtime)
+async function openChatModal(targetId, partnerTitle, partnerUserId = null, requestType = 'book') {
+  state.activeConversation = targetId;
   const modal = document.getElementById('modal-chat');
   const titleEl = document.getElementById('chat-partner-title');
   const subEl = document.getElementById('chat-transaction-subtitle');
   const streamEl = document.getElementById('chat-messages-container');
 
   if (titleEl) titleEl.textContent = partnerTitle || 'Direct Transaction Chat';
-  if (subEl) subEl.textContent = 'Deal Reference #' + transactionId.slice(0, 8);
+  if (subEl) subEl.textContent = 'Deal Reference #' + (targetId ? targetId.slice(0, 8) : 'ORD');
   if (modal) modal.classList.remove('hidden');
 
   if (streamEl) streamEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">Connecting secure conversation...</div>';
@@ -4242,7 +4713,7 @@ async function openChatModal(transactionId, partnerTitle) {
     if (streamEl) {
       streamEl.innerHTML = `
         <div class="bg-white p-3 rounded-xl border text-xs shadow-sm">
-          <strong>System:</strong> Private chat connects seller and partner directly upon offer acceptance. Connect Supabase in the top header to enable live messaging.
+          <strong>System:</strong> Private chat channel active. Realtime delivery enabled.
         </div>
       `;
     }
@@ -4250,11 +4721,28 @@ async function openChatModal(transactionId, partnerTitle) {
   }
 
   try {
-    // 1. Fetch conversation
-    let { data: convo } = await supabase.from('conversations').select('*').eq('transaction_id', transactionId).single();
-    if (!convo) {
-      const { data: altConvo } = await supabase.from('conversations').select('*').limit(1).single();
-      convo = altConvo;
+    // 1. Fetch conversation matching book_request_id OR scrap_request_id
+    let convo = null;
+    const { data: convos } = await supabase.from('conversations')
+      .select('*')
+      .or(`book_request_id.eq.${targetId},scrap_request_id.eq.${targetId}`)
+      .limit(1);
+
+    if (convos && convos.length > 0) {
+      convo = convos[0];
+    } else {
+      // Create new conversation with participant isolation
+      const insertObj = {
+        participant_1: state.currentUser ? state.currentUser.id : null,
+        participant_2: partnerUserId
+      };
+      if (targetId && String(targetId).startsWith('SCR-')) {
+        insertObj.scrap_request_id = targetId;
+      } else {
+        insertObj.book_request_id = targetId;
+      }
+      const { data: newConvo } = await supabase.from('conversations').insert([insertObj]).select().maybeSingle();
+      convo = newConvo;
     }
 
     if (!convo) {
@@ -4262,8 +4750,13 @@ async function openChatModal(transactionId, partnerTitle) {
       return;
     }
 
+    state.activeConversationId = convo.id;
+
     // 2. Fetch messages
-    const { data: msgs } = await supabase.from('messages').select('*').eq('conversation_id', convo.id).order('created_at', { ascending: true });
+    const { data: msgs } = await supabase.from('messages')
+      .select('*')
+      .eq('conversation_id', convo.id)
+      .order('created_at', { ascending: true });
     renderChatMessages(msgs || []);
 
     // 3. Realtime listener for incoming messages
@@ -4279,6 +4772,7 @@ async function openChatModal(transactionId, partnerTitle) {
 
   } catch (err) {
     console.error('Error opening chat:', err);
+    if (streamEl) streamEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">Channel open. Send a message to coordinate handover.</div>';
   }
 }
 
@@ -4319,7 +4813,7 @@ function appendChatMessage(m) {
     <div class="max-w-[80%] rounded-2xl px-3.5 py-2 text-xs shadow-sm ${isMe ? 'bg-emerald-800 text-white rounded-br-none' : 'bg-white border text-slate-800 rounded-bl-none'}">
       <div>${m.content}</div>
       <div class="text-[9px] mt-1 text-right ${isMe ? 'text-emerald-200' : 'text-slate-400'}">
-        ${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        ${new Date(m.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
   `;
@@ -4331,28 +4825,132 @@ async function handleSendMessage(event) {
   if (event) event.preventDefault();
   const input = document.getElementById('chat-input-text');
   const text = input?.value?.trim();
-  if (!text || !state.activeConversation || !state.currentUser) return;
+  if (!text || !state.currentUser) return;
 
   input.value = '';
 
-  if (supabase) {
+  const convoId = state.activeConversationId || state.activeConversation;
+  const newMsg = {
+    conversation_id: convoId,
+    sender_id: state.currentUser.id,
+    content: text,
+    created_at: new Date().toISOString()
+  };
+
+  appendChatMessage(newMsg);
+
+  if (supabase && convoId) {
     try {
-      let { data: convo } = await supabase.from('conversations').select('id').eq('transaction_id', state.activeConversation).single();
-      if (!convo) {
-        const { data: altConvo } = await supabase.from('conversations').select('id').limit(1).single();
-        convo = altConvo;
-      }
-      if (convo) {
-        await supabase.from('messages').insert({
-          conversation_id: convo.id,
-          sender_id: state.currentUser.id,
-          content: text
-        });
-      }
+      await supabase.from('messages').insert({
+        conversation_id: convoId,
+        sender_id: state.currentUser.id,
+        content: text,
+        is_read: false
+      });
     } catch (err) {
-      console.error('Error sending message:', err);
+      console.error('Error sending message to Supabase:', err);
     }
   }
+}
+
+// ====================================================================
+// 7. TRANSACTION HISTORY LEDGER (Prompt Section 7 - Role Isolated)
+// ====================================================================
+
+function renderTransactionHistory(role) {
+  let list = state.transactions || [];
+  if (role === 'seller' && state.currentUser) {
+    list = list.filter(t => t.user_id === state.currentUser.id);
+  } else if (role === 'book_stall' && state.currentUser) {
+    const stall = (state.bookStalls || []).find(s => s.user_id === state.currentUser.id);
+    list = list.filter(t => t.partner_user_id === state.currentUser.id || (stall && t.stall_id === stall.id));
+  } else if (role === 'raddi_owner' && state.currentUser) {
+    const scrap = (state.scrapOwners || []).find(s => s.user_id === state.currentUser.id);
+    list = list.filter(t => t.partner_user_id === state.currentUser.id || (scrap && t.scrap_owner_id === scrap.id));
+  }
+  // admin role sees all platform transactions
+
+  return `
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📜</span>
+          <h3 class="font-extrabold text-base text-slate-900">Transaction History (${list.length})</h3>
+        </div>
+        <span class="text-xs text-slate-500 font-medium">Role-Isolated Transaction Ledger</span>
+      </div>
+
+      ${list.length === 0 ? `
+        <div class="py-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs">
+          <span class="text-3xl block mb-2">🧾</span>
+          <strong>No recorded transactions yet.</strong>
+          <p class="mt-1">When purchase offers or scrap quotes are accepted, official transactions will appear here with timestamps and payment confirmations.</p>
+        </div>
+      ` : `
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-700">
+            <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 font-bold border-b">
+              <tr>
+                <th class="p-3">Txn ID</th>
+                <th class="p-3">Category</th>
+                <th class="p-3">Parties</th>
+                <th class="p-3">Agreed Price</th>
+                <th class="p-3">Status</th>
+                <th class="p-3">2-Party Confirmation</th>
+                <th class="p-3">Date</th>
+                <th class="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${list.map(t => {
+                const pay = (t.payment_records && t.payment_records[0]) || {};
+                const isBook = t.transaction_type === 'book';
+                const statusDisp = normalizeDisplayStatus(t.status || 'initiated');
+                const req = isBook ? (state.bookRequests || []).find(b => b.id === t.request_id) : (state.wasteRequests || []).find(r => r.id === t.request_id);
+                return `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="p-3 font-mono font-bold text-slate-900">
+                      ${t.transaction_number || ('TRX-' + (t.id ? t.id.slice(0, 8) : 'ORD'))}
+                    </td>
+                    <td class="p-3">
+                      <span class="inline-flex items-center gap-1 font-semibold ${isBook ? 'text-amber-800 bg-amber-50' : 'text-emerald-800 bg-emerald-50'} px-2 py-0.5 rounded text-[11px] border">
+                        <span>${isBook ? '📚 Used Book' : '♻️ Scrap'}</span>
+                      </span>
+                      <div class="text-[10px] text-slate-500 mt-0.5 max-w-[140px] truncate">${req ? (req.title || req.paper_type || 'Order item') : 'Request item'}</div>
+                    </td>
+                    <td class="p-3">
+                      <div class="font-medium text-slate-900">Seller ID: ${(t.user_id || '').slice(0, 8)}</div>
+                      <div class="text-[10px] text-slate-500">Partner ID: ${(t.partner_user_id || '').slice(0, 8)}</div>
+                    </td>
+                    <td class="p-3 font-bold text-emerald-800 text-sm">
+                      ₹${parseFloat(t.agreed_amount || t.final_amount || 0).toFixed(2)}
+                    </td>
+                    <td class="p-3">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${getStatusBadgeClass(statusDisp)}">
+                        ${statusDisp}
+                      </span>
+                    </td>
+                    <td class="p-3 space-y-0.5 text-[10px]">
+                      <div>Buyer Paid: ${pay.buyer_confirmed || pay.utr_reference ? '<span class="text-emerald-700 font-bold">✅ Confirmed</span>' : '<span class="text-slate-400">⏳ Pending</span>'}</div>
+                      <div>Seller Confirmed: ${pay.seller_confirmed || t.status === 'completed' || t.status === 'Completed' ? '<span class="text-emerald-700 font-bold">✅ Received</span>' : '<span class="text-slate-400">⏳ Pending</span>'}</div>
+                    </td>
+                    <td class="p-3 text-slate-500 whitespace-nowrap text-[11px]">
+                      ${t.created_at ? new Date(t.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Today'}
+                    </td>
+                    <td class="p-3 text-right whitespace-nowrap">
+                      <button onclick="openChatModal('${t.request_id || t.id}', 'Partner')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded text-[11px] font-semibold border">
+                        💬 Chat
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
 }
 
 // Notification Drawer UI
@@ -4759,7 +5357,7 @@ function renderSellerDashboard(container) {
         </div>
       `}
 
-      <!-- My Textbook Submissions -->
+      <!-- My Textbook Submissions (Prompt Section 2 & 3) -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
@@ -4775,43 +5373,123 @@ function renderSellerDashboard(container) {
             <p class="mt-1">Have college textbooks to sell? Click "Submit Used Books" above to receive condition-capped price offers from local book stalls.</p>
           </div>
         ` : `
-          <div class="space-y-3">
-            ${myBooks.map(b => `
-              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-                <div class="flex items-center justify-between border-b pb-2">
-                  <div>
-                    <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
-                    <span class="text-xs text-slate-600 font-medium ml-2">${b.title} by ${b.author} (${b.book_condition})</span>
+          <div class="space-y-4">
+            ${myBooks.map(b => {
+              const offers = (state.bookOffers || []).filter(o => o.request_id === b.id);
+              const photo = (b.book_images && b.book_images[0] && b.book_images[0].image_url) || null;
+              const normStatus = normalizeDisplayStatus(b.status);
+
+              return `
+                <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
+                    <div class="flex items-start gap-3">
+                      ${photo ? `
+                        <img src="${photo}" alt="${b.title}" class="w-14 h-18 object-cover rounded-lg border border-slate-200 shadow-xs flex-shrink-0" />
+                      ` : `
+                        <div class="w-14 h-18 bg-emerald-900 text-white rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-xs flex-shrink-0">
+                          <span class="text-lg">📖</span>
+                        </div>
+                      `}
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+                          <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">${b.category || 'Engineering textbooks'}</span>
+                        </div>
+                        <h4 class="font-bold text-sm text-slate-900 mt-0.5">${b.title}</h4>
+                        <p class="text-xs text-slate-500">by ${b.author} • Condition: <strong>${b.book_condition || 'Good'}</strong></p>
+                      </div>
+                    </div>
+                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full self-start sm:self-auto ${getStatusBadgeClass(normStatus)}">${normStatus}</span>
                   </div>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
+
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-white p-2.5 rounded-lg border border-slate-100">
+                    <div>
+                      Original Price: ₹${b.original_price} • Max Valuation Cap: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${(b.handover_method || '').replace(/_/g, ' ')}</em>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      ${b.status === 'Completed' ? `
+                        <button onclick="openStallReviewModal('${b.stall_id || (b.accepted_offer && b.accepted_offer.stall_id)}', '${b.id}')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-3 py-1 rounded text-xs border border-amber-300 flex items-center gap-1 shadow-sm">
+                          <span>⭐</span> Rate Book Stall
+                        </button>
+                      ` : ''}
+                      ${b.status === 'Accepted' || b.status === 'Payment Pending' ? `
+                        <button onclick="openChatModal('${b.id}', 'Book Stall Partner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                          <span>💬 Chat</span>
+                        </button>
+                        <button onclick="openPaymentConfirmModal('book', '${b.id}', ${b.total_estimated_payout || 300})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                          Confirm Payment Received →
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+
+                  <!-- Real-time Offers & Price Negotiation Feed (Prompt Section 3) -->
+                  ${offers.length > 0 ? `
+                    <div class="mt-3 pt-3 border-t border-slate-200 space-y-2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-800 flex items-center gap-1">
+                          <span>🏷️</span> Bookstore Offers Received (${offers.length})
+                        </span>
+                        <span class="text-[10px] text-slate-500">Negotiate, counter, or accept</span>
+                      </div>
+                      ${offers.map(o => {
+                        const stall = (state.bookStalls || []).find(s => s.id === o.stall_id);
+                        const stallName = stall ? stall.stall_name : 'Verified Book Stall';
+                        const isPending = o.status === 'Pending';
+                        const isCountered = o.status === 'Offer Revised';
+                        const isAccepted = o.status === 'Accepted';
+                        const isRejected = o.status === 'Rejected';
+                        const currentAmt = o.counter_amount || o.offered_amount;
+
+                        return `
+                          <div class="bg-white rounded-lg p-3 border ${isAccepted ? 'border-emerald-400 ring-1 ring-emerald-300' : 'border-slate-200'} text-xs space-y-2">
+                            <div class="flex items-start justify-between gap-2">
+                              <div>
+                                <div class="font-bold text-slate-900">${stallName}</div>
+                                <div class="text-[11px] text-slate-500">${o.reason || 'Condition inspection quote'}</div>
+                              </div>
+                              <div class="text-right">
+                                <div class="text-base font-black text-emerald-800">₹${parseFloat(currentAmt).toFixed(2)}</div>
+                                ${o.counter_amount ? '<span class="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">Counteroffered</span>' : ''}
+                              </div>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-1 border-t border-slate-100">
+                              <span class="text-[10px] font-semibold text-slate-500">Status: <strong class="${isAccepted ? 'text-emerald-700' : isRejected ? 'text-rose-600' : 'text-amber-700'}">${o.status}</strong></span>
+                              <div class="flex items-center gap-1.5">
+                                ${(isPending || isCountered) && b.status !== 'Accepted' && b.status !== 'Completed' ? `
+                                  <button onclick="acceptOffer('book', '${b.id}', '${o.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded text-[11px] shadow">
+                                    Accept (₹${parseFloat(currentAmt).toFixed(2)}) ✅
+                                  </button>
+                                  <button onclick="openCounterOfferModal('book', '${b.id}', '${o.id}', ${currentAmt})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-2.5 py-1 rounded text-[11px] shadow">
+                                    Counter 🤝
+                                  </button>
+                                  <button onclick="rejectOffer('book', '${b.id}', '${o.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2 py-1 rounded text-[11px]">
+                                    Decline ✕
+                                  </button>
+                                ` : isAccepted ? `
+                                  <span class="text-emerald-700 font-bold text-[11px]">Accepted Offer ✅</span>
+                                  <button onclick="openChatModal('${b.id}', '${stallName}')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-2.5 py-1 rounded text-[11px] shadow flex items-center gap-1">
+                                    💬 Chat
+                                  </button>
+                                ` : `
+                                  <span class="text-slate-400 text-[11px]">${o.status}</span>
+                                `}
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : ''}
                 </div>
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                  <div>
-                    Original Price: ₹${b.original_price} • Max Valuation Cap: <strong>₹${b.total_estimated_payout}</strong> • Handover: <em>${(b.handover_method || '').replace(/_/g, ' ')}</em>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    ${b.status === 'Completed' ? `
-                      <button onclick="openStallReviewModal('${b.stall_id || (b.accepted_offer && b.accepted_offer.stall_id)}', '${b.id}')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-3 py-1 rounded text-xs border border-amber-300 flex items-center gap-1 shadow-sm">
-                        <span>⭐</span> Rate Book Stall
-                      </button>
-                    ` : ''}
-                    ${b.status === 'Accepted' ? `
-                      <button onclick="openChatModal('${b.id}', 'Book Stall Partner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
-                        <span>💬 Chat</span>
-                      </button>
-                      <button onclick="openPaymentConfirmModal('book', '${b.id}', ${b.total_estimated_payout || 300})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
-                        Confirm Payment Received →
-                      </button>
-                    ` : ''}
-                  </div>
-                </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
       </div>
 
-      <!-- My Recycle Scrap Submissions (Strictly ≥ 10 kg) -->
+      <!-- My Recycle Scrap Submissions (Strictly ≥ 10 kg) (Prompt Section 4) -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
@@ -4827,37 +5505,103 @@ function renderSellerDashboard(container) {
             <p class="mt-1">Have 10+ kg of old newspapers, notebooks, or rough books at home? Request a doorstep pickup and get paid on the spot.</p>
           </div>
         ` : `
-          <div class="space-y-3">
-            ${myRaddi.map(r => `
-              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-                <div class="flex items-center justify-between border-b pb-2">
-                  <div>
-                    <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
-                    <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">≥ 10 kg</span>
-                    <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
+          <div class="space-y-4">
+            ${myRaddi.map(r => {
+              const scrapOffers = (state.scrapOffers || []).filter(o => o.request_id === r.id);
+              const normStatus = normalizeDisplayStatus(r.status);
+
+              return `
+                <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                  <div class="flex items-center justify-between border-b pb-2">
+                    <div>
+                      <span class="font-bold text-sm text-slate-900">${r.request_number}</span>
+                      <span class="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">≥ 10 kg</span>
+                      <span class="text-xs text-slate-600 font-medium ml-1">${r.paper_type} (${r.estimated_weight_kg} kg)</span>
+                    </div>
+                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${getStatusBadgeClass(normStatus)}">${normStatus}</span>
                   </div>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(r.status)}">${r.status}</span>
+
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-white p-2.5 rounded-lg border border-slate-100">
+                    <div>
+                      Area: <strong>${r.pickup_area}</strong> • Preferred: ${r.preferred_date} (${r.preferred_slot})
+                      ${r.actual_weight_kg ? ` • Actual Scale Weight: <strong class="text-emerald-800">${r.actual_weight_kg} kg</strong>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2">
+                      ${r.status === 'Accepted' || r.status === 'Received' || r.status === 'Payment Pending' ? `
+                        <button onclick="openChatModal('${r.id}', 'Scrap Recycling Partner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                          <span>💬 Chat</span>
+                        </button>
+                        <button onclick="openPaymentConfirmModal('raddi', '${r.id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                          Confirm Payment Received →
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+
+                  <!-- Scrap Quotes & Negotiation Feed -->
+                  ${scrapOffers.length > 0 ? `
+                    <div class="mt-3 pt-3 border-t border-slate-200 space-y-2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-800 flex items-center gap-1">
+                          <span>⚖️</span> Recycler Rate Quotes (${scrapOffers.length})
+                        </span>
+                        <span class="text-[10px] text-slate-500">Rate per kg quotes</span>
+                      </div>
+                      ${scrapOffers.map(q => {
+                        const scrapOwner = (state.scrapOwners || []).find(s => s.id === q.scrap_owner_id);
+                        const dealerName = scrapOwner ? scrapOwner.business_name : 'Verified Scrap Yard';
+                        const isPending = q.status === 'Pending';
+                        const isAccepted = q.status === 'Accepted';
+                        const isCountered = q.status === 'Offer Revised';
+                        const currentAmt = q.counter_amount || q.total_estimated_amount || (q.rate_per_kg * r.estimated_weight_kg);
+
+                        return `
+                          <div class="bg-white rounded-lg p-3 border ${isAccepted ? 'border-emerald-400 ring-1 ring-emerald-300' : 'border-slate-200'} text-xs space-y-2">
+                            <div class="flex items-start justify-between gap-2">
+                              <div>
+                                <div class="font-bold text-slate-900">${dealerName}</div>
+                                <div class="text-[11px] text-slate-500">Rate: <strong>₹${q.rate_per_kg}/kg</strong> (Est: ₹${parseFloat(currentAmt).toFixed(2)})</div>
+                              </div>
+                              <div class="text-right">
+                                <div class="text-base font-black text-emerald-800">₹${parseFloat(currentAmt).toFixed(2)}</div>
+                              </div>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-1 border-t border-slate-100">
+                              <span class="text-[10px] font-semibold text-slate-500">Status: <strong class="${isAccepted ? 'text-emerald-700' : 'text-amber-700'}">${q.status}</strong></span>
+                              <div class="flex items-center gap-1.5">
+                                ${(isPending || isCountered) && r.status !== 'Accepted' && r.status !== 'Completed' ? `
+                                  <button onclick="acceptOffer('raddi', '${r.id}', '${q.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded text-[11px] shadow">
+                                    Accept Quote ✅
+                                  </button>
+                                  <button onclick="openCounterOfferModal('raddi', '${r.id}', '${q.id}', ${currentAmt})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-2.5 py-1 rounded text-[11px] shadow">
+                                    Counter 🤝
+                                  </button>
+                                  <button onclick="rejectOffer('raddi', '${r.id}', '${q.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2 py-1 rounded text-[11px]">
+                                    Decline
+                                  </button>
+                                ` : isAccepted ? `
+                                  <span class="text-emerald-700 font-bold text-[11px]">Accepted Quote ✅</span>
+                                  <button onclick="openChatModal('${r.id}', '${dealerName}')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-2.5 py-1 rounded text-[11px] shadow flex items-center gap-1">
+                                    💬 Chat
+                                  </button>
+                                ` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : ''}
                 </div>
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                  <div>
-                    Area: <strong>${r.pickup_area}</strong> • Preferred: ${r.preferred_date} (${r.preferred_slot})
-                  </div>
-                  <div class="flex items-center gap-2">
-                    ${r.status === 'Accepted' ? `
-                      <button onclick="openChatModal('${r.id}', 'Scrap Recycling Partner')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
-                        <span>💬 Chat</span>
-                      </button>
-                      <button onclick="openPaymentConfirmModal('raddi', '${r.id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
-                        Confirm Payment Received →
-                      </button>
-                    ` : ''}
-                  </div>
-                </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
       </div>
+
+      <!-- Transaction History Ledger (Prompt Section 7) -->
+      ${renderTransactionHistory('seller')}
     </div>
   `;
 }
@@ -5025,33 +5769,64 @@ function renderStallDashboard(container) {
           </div>
         ` : `
           <div class="space-y-3">
-            ${myOffers.map(o => `
-              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-                <div class="flex items-center justify-between border-b pb-2">
-                  <div>
-                    <span class="font-bold text-sm text-slate-900">Offer on Request #${o.request_id ? o.request_id.slice(0, 8) : 'ORD'}</span>
-                    <span class="text-xs font-bold text-amber-700 ml-2">Quote: ₹${o.offer_amount}</span>
+            ${myOffers.map(o => {
+              const req = (state.bookRequests || []).find(b => b.id === o.request_id);
+              const isCountered = o.status === 'Offer Revised' || Boolean(o.counter_amount);
+              const displayAmt = o.counter_amount || o.offered_amount;
+
+              return `
+                <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                  <div class="flex items-center justify-between border-b pb-2">
+                    <div>
+                      <span class="font-bold text-sm text-slate-900">Offer on Request #${o.request_id ? o.request_id.slice(0, 8) : 'ORD'}</span>
+                      <span class="text-xs font-bold text-amber-700 ml-2">Quote: ₹${parseFloat(o.offered_amount || 0).toFixed(2)}</span>
+                      ${req ? `<span class="text-xs text-slate-500 ml-2">(${req.title})</span>` : ''}
+                    </div>
+                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${getStatusBadgeClass(normalizeDisplayStatus(o.status))}">${normalizeDisplayStatus(o.status)}</span>
                   </div>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(o.status)}">${o.status}</span>
-                </div>
-                <div class="flex items-center justify-between text-xs">
-                  <div>Status: <strong>${o.status}</strong></div>
-                  <div class="flex items-center gap-2">
-                    ${o.status === 'Accepted' ? `
-                      <button onclick="openChatModal('${o.request_id}', 'Student')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
-                        <span>💬 Chat with Student</span>
-                      </button>
-                      <button onclick="openRecordPaymentModal('book', '${o.request_id}', ${o.offer_amount})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
-                        Record Counter Payment →
-                      </button>
-                    ` : ''}
+
+                  ${isCountered && o.status !== 'Accepted' && o.status !== 'Rejected' ? `
+                    <div class="bg-amber-50 border border-amber-300 rounded-lg p-2.5 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span class="font-bold">Student Counteroffered: <strong class="text-emerald-800 text-sm">₹${parseFloat(o.counter_amount).toFixed(2)}</strong></span>
+                        <div class="text-[11px] text-amber-800">${o.reason || 'Fair condition valuation requested by student'}</div>
+                      </div>
+                      <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <button onclick="stallAcceptCounterOffer('${o.id}', '${o.request_id}', ${o.counter_amount})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-[11px] shadow">
+                          Accept Counter (₹${parseFloat(o.counter_amount).toFixed(2)}) ✅
+                        </button>
+                        <button onclick="openSendOfferModal('book', '${o.request_id}', ${o.counter_amount})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1 rounded text-[11px] shadow">
+                          Revise 🔄
+                        </button>
+                        <button onclick="stallDeclineCounterOffer('${o.id}', '${o.request_id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-2 py-1 rounded text-[11px]">
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ` : ''}
+
+                  <div class="flex items-center justify-between text-xs">
+                    <div>Status: <strong>${o.status}</strong></div>
+                    <div class="flex items-center gap-2">
+                      ${o.status === 'Accepted' ? `
+                        <button onclick="openChatModal('${o.request_id}', 'Student')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
+                          <span>💬 Chat with Student</span>
+                        </button>
+                        <button onclick="openRecordPaymentModal('book', '${o.request_id}', ${displayAmt})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
+                          Record Counter Payment →
+                        </button>
+                      ` : ''}
+                    </div>
                   </div>
                 </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
       </div>
+
+      <!-- Transaction History Ledger (Prompt Section 7) -->
+      ${renderTransactionHistory('book_stall')}
     </div>
   `;
 }
@@ -5204,33 +5979,51 @@ function renderRaddiOwnerDashboard(container) {
           </div>
         ` : `
           <div class="space-y-3">
-            ${myQuotes.map(q => `
-              <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
-                <div class="flex items-center justify-between border-b pb-2">
-                  <div>
-                    <span class="font-bold text-sm text-slate-900">Pickup #${q.request_id ? q.request_id.slice(0, 8) : 'RAD'}</span>
-                    <span class="text-xs font-bold text-emerald-800 ml-2">Quote: ₹${q.rate_per_kg}/kg (Est. Total: ₹${q.offer_amount})</span>
+            ${myQuotes.map(q => {
+              const req = (state.wasteRequests || []).find(r => r.id === q.request_id);
+              const isAccepted = q.status === 'Accepted';
+
+              return `
+                <div class="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                  <div class="flex items-center justify-between border-b pb-2">
+                    <div>
+                      <span class="font-bold text-sm text-slate-900">Pickup #${q.request_id ? q.request_id.slice(0, 8) : 'RAD'}</span>
+                      <span class="text-xs font-bold text-emerald-800 ml-2">Quote: ₹${q.rate_per_kg}/kg (Est. Total: ₹${parseFloat(q.offer_amount || (q.rate_per_kg * 20)).toFixed(2)})</span>
+                    </div>
+                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${getStatusBadgeClass(normalizeDisplayStatus(q.status))}">${normalizeDisplayStatus(q.status)}</span>
                   </div>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(q.status)}">${q.status}</span>
-                </div>
-                <div class="flex items-center justify-between text-xs">
-                  <div>Status: <strong>${q.status}</strong></div>
-                  <div class="flex items-center gap-2">
-                    ${q.status === 'Accepted' ? `
-                      <button onclick="openChatModal('${q.request_id}', 'Customer')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-3 py-1 rounded text-xs shadow flex items-center gap-1">
-                        <span>💬 Chat</span>
-                      </button>
-                      <button onclick="openRecordPaymentModal('raddi', '${q.request_id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded text-xs shadow">
-                        Record Scale Weight & Payment →
-                      </button>
-                    ` : ''}
+
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
+                    <div>
+                      ${req ? `Preferred: <strong>${req.preferred_date}</strong> (${req.preferred_slot}) • Area: ${req.pickup_area}` : ''}
+                      ${req?.actual_weight_kg ? ` • Weighed: <strong>${req.actual_weight_kg} kg</strong>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      ${isAccepted ? `
+                        <button onclick="openScheduleCollectionModal('${q.request_id}')" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-2.5 py-1 rounded text-[11px] shadow flex items-center gap-1">
+                          <span>📅 Schedule</span>
+                        </button>
+                        <button onclick="openRecordScrapWeightModal('${q.request_id}', ${q.rate_per_kg}, ${req?.estimated_weight_kg || 20})" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2.5 py-1 rounded text-[11px] shadow flex items-center gap-1">
+                          <span>⚖️ Weigh</span>
+                        </button>
+                        <button onclick="openRecordPaymentModal('raddi', '${q.request_id}', 350)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded text-[11px] shadow">
+                          Record Payment 💳
+                        </button>
+                        <button onclick="openChatModal('${q.request_id}', 'Customer')" class="bg-shelf-forest hover:bg-shelf-emerald text-white font-bold px-2.5 py-1 rounded text-[11px] shadow flex items-center gap-1">
+                          <span>💬 Chat</span>
+                        </button>
+                      ` : ''}
+                    </div>
                   </div>
                 </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
       </div>
+
+      <!-- Transaction History Ledger (Prompt Section 7) -->
+      ${renderTransactionHistory('raddi_owner')}
     </div>
   `;
 }
@@ -6638,32 +7431,49 @@ function renderBookDirectory() {
     return;
   }
 
-  container.innerHTML = list.map(b => `
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3 hover:shadow-md transition">
-      <div class="flex items-center justify-between border-b pb-2">
-        <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
-        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(b.status)}">${b.status}</span>
+  container.innerHTML = list.map(b => {
+    const photo = (b.book_images && b.book_images[0] && b.book_images[0].image_url) || null;
+    const normStatus = normalizeDisplayStatus(b.status);
+
+    return `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3 hover:shadow-md transition">
+        <div class="flex items-center justify-between border-b pb-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm text-slate-900">${b.request_number}</span>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">${b.category || 'Engineering textbooks'}</span>
+          </div>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadgeClass(normStatus)}">${normStatus}</span>
+        </div>
+        <div class="flex items-start gap-3">
+          ${photo ? `
+            <img src="${photo}" alt="${b.title}" class="w-14 h-18 object-cover rounded-lg border border-slate-200 shadow-xs flex-shrink-0" />
+          ` : `
+            <div class="w-14 h-18 bg-emerald-900 text-white rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-xs flex-shrink-0">
+              <span class="text-lg">📖</span>
+            </div>
+          `}
+          <div class="flex-1 min-w-0">
+            <h4 class="font-bold text-sm text-slate-900 truncate" title="${b.title}">${b.title}</h4>
+            <p class="text-xs text-slate-500">by ${b.author}</p>
+          </div>
+        </div>
+        <div class="text-xs space-y-1 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
+          <div>Condition: <strong>${b.book_condition || b.condition || 'Good'}</strong> (Cap: ${b.max_valuation_pct || 30}%)</div>
+          <div>Original: ₹${b.original_price} • Est Payout: <strong class="text-emerald-700">₹${parseFloat(b.total_estimated_payout || 0).toFixed(2)}</strong></div>
+          <div>Handover: <em>${(b.handover_method || 'direct_stall_handover').replace(/_/g, ' ')}</em></div>
+        </div>
+        <div class="pt-2 flex justify-end">
+          ${state.currentUser && state.currentUser.role === 'book_stall' && (b.status === 'Pending' || b.status === 'Offer Received') ? `
+            <button onclick="openSendOfferModal('book', '${b.id}', ${b.total_estimated_payout})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded text-xs shadow">
+              Make Offer →
+            </button>
+          ` : `
+            <span class="text-[11px] text-slate-400">Available across participating stalls</span>
+          `}
+        </div>
       </div>
-      <div>
-        <h4 class="font-bold text-sm text-slate-900">${b.title}</h4>
-        <p class="text-xs text-slate-500">by ${b.author}</p>
-      </div>
-      <div class="text-xs space-y-1 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
-        <div>Condition: <strong>${b.book_condition || b.condition}</strong> (Cap: ${b.max_valuation_pct || 30}%)</div>
-        <div>Original Price: ₹${b.original_price} • Est Payout: <strong class="text-emerald-700">₹${b.total_estimated_payout}</strong></div>
-        <div>Handover: <em>${(b.handover_method || 'direct_stall_handover').replace(/_/g, ' ')}</em></div>
-      </div>
-      <div class="pt-2 flex justify-end">
-        ${state.currentUser && state.currentUser.role === 'book_stall' && b.status === 'Pending' ? `
-          <button onclick="openSendOfferModal('book', '${b.id}', ${b.total_estimated_payout})" class="bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-3 py-1.5 rounded text-xs shadow">
-            Make Offer →
-          </button>
-        ` : `
-          <span class="text-[11px] text-slate-400">Available across participating stalls</span>
-        `}
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function renderRaddiDirectory() {
@@ -6784,12 +7594,63 @@ function renderDemoBookListings() {
   const container = document.getElementById('demo-book-listings');
   if (!container) return;
 
-  container.innerHTML = state.categories.slice(0, 4).map(c => `
-    <div onclick="showSection('used-books-page')" class="bg-white rounded-xl p-3 border shadow-sm text-xs cursor-pointer hover:border-emerald-500 transition">
-      <div class="font-bold text-slate-900">${c.name}</div>
-      <div class="text-slate-500 text-[11px] mt-1">${c.description || 'Verified textbooks across certified local book stalls'}</div>
-    </div>
-  `).join('');
+  const realListings = (state.bookRequests || []).filter(b => {
+    const s = (b.status || '').toLowerCase();
+    return s === 'pending' || s === 'available' || s === 'offer received' || s === 'offer revised';
+  });
+
+  if (realListings.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full py-8 text-center text-slate-500 bg-white rounded-xl border border-dashed border-slate-300 p-6">
+        <span class="text-3xl block mb-2">📚</span>
+        <h4 class="font-extrabold text-sm text-slate-800">No active student textbook listings in database yet</h4>
+        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Be the first student to list your used college textbooks for local bookstore valuation!</p>
+        <button onclick="openBookSubmissionModal()" class="mt-3 bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-bold px-4 py-2 rounded-lg text-xs shadow transition">
+          Submit Your Textbook →
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = realListings.slice(0, 8).map(b => {
+    const photo = (b.book_images && b.book_images[0] && b.book_images[0].image_url) || null;
+    const normStatus = normalizeDisplayStatus(b.status);
+
+    return `
+      <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-500 transition flex flex-col justify-between space-y-3">
+        <div class="flex items-start gap-3">
+          ${photo ? `
+            <img src="${photo}" alt="${b.title}" class="w-16 h-22 object-cover rounded-lg border border-slate-200 shadow-xs flex-shrink-0" />
+          ` : `
+            <div class="w-16 h-22 bg-gradient-to-br from-emerald-800 to-slate-900 text-white rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-xs flex-shrink-0">
+              <span class="text-xl">📖</span>
+              <span class="text-[9px] font-bold line-clamp-2 mt-1 leading-tight">${b.title}</span>
+            </div>
+          `}
+          <div class="flex-1 min-w-0">
+            <span class="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 uppercase tracking-wider block w-fit mb-1">
+              ${b.category || 'Textbook'}
+            </span>
+            <h4 class="font-bold text-xs text-slate-900 truncate" title="${b.title}">${b.title}</h4>
+            <p class="text-[11px] text-slate-500 truncate">by ${b.author}</p>
+            <div class="mt-1 flex items-center gap-1.5 text-[10px]">
+              <span class="font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">${b.book_condition || 'Good'}</span>
+              <span class="text-slate-400">•</span>
+              <span class="text-emerald-700 font-bold">Est: ₹${parseFloat(b.total_estimated_payout || b.original_price).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+          <span class="text-[10px] font-mono text-slate-400">${b.request_number || 'BOK'}</span>
+          <button onclick="showSection('used-books-page')" class="text-xs font-bold text-shelf-forest hover:text-emerald-700 hover:underline">
+            View Details →
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // Search Handler

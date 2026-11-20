@@ -648,36 +648,207 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API endpoint: Reject Business
-  if (reqPath === '/api/reject-business' && req.method === 'POST') {
+  // API endpoint: Propose Counteroffer (Prompt Section 3 - Real Negotiation)
+  if (reqPath === '/api/counter-offer' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        const { type, id, userId } = JSON.parse(body);
-        const supabaseAdmin = getAdminClient();
-        if (!supabaseAdmin) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Server missing admin client.' }));
+        const { type, requestId, offerId, counterAmount, notes, senderUserId, targetUserId } = JSON.parse(body);
+        const amt = parseFloat(counterAmount);
+        if (!amt || amt <= 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Please enter a valid counteroffer amount greater than 0.' }));
           return;
         }
 
-        if (type === 'stall') {
-          await supabaseAdmin.from('book_stalls').update({ approval_status: 'rejected' }).eq('id', id);
-          if (userId) {
-            await supabaseAdmin.from('user_roles').update({ role: 'seller', is_approved: false }).eq('user_id', userId);
+        const supabaseAdmin = getAdminClient();
+        if (supabaseAdmin) {
+          if (type === 'book') {
+            await supabaseAdmin.from('book_offers').update({
+              counter_amount: amt,
+              status: 'Offer Revised',
+              reason: notes ? `Counteroffer: ${notes}` : 'Counteroffer sent by seller'
+            }).eq('id', offerId);
+
+            await supabaseAdmin.from('book_requests').update({
+              status: 'Offer Revised'
+            }).eq('id', requestId);
+          } else {
+            await supabaseAdmin.from('scrap_offers').update({
+              counter_amount: amt,
+              status: 'Offer Revised',
+              notes: notes ? `Counteroffer: ${notes}` : 'Counteroffer sent by seller'
+            }).eq('id', offerId);
+
+            await supabaseAdmin.from('scrap_requests').update({
+              status: 'Offer Revised'
+            }).eq('id', requestId);
           }
-        } else {
-          await supabaseAdmin.from('scrap_owners').update({ approval_status: 'rejected' }).eq('id', id);
-          if (userId) {
-            await supabaseAdmin.from('user_roles').update({ role: 'seller', is_approved: false }).eq('user_id', userId);
+
+          if (targetUserId) {
+            await supabaseAdmin.from('notifications').insert([{
+              user_id: targetUserId,
+              title: 'Counteroffer Received 🤝',
+              message: `A counteroffer of ₹${amt.toFixed(2)} was proposed for Request #${(requestId || '').slice(0, 8)}. Click to review.`,
+              notification_type: 'counter_offer',
+              reference_id: requestId,
+              is_read: false
+            }]);
           }
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ success: true, message: 'Business application rejected.' }));
+        res.end(JSON.stringify({ success: true, message: `Counteroffer of ₹${amt.toFixed(2)} dispatched successfully.` }));
       } catch (err) {
-        console.error('Error in /api/reject-business:', err);
+        console.error('Error in /api/counter-offer:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Schedule Scrap Collection (Prompt Section 4)
+  if (reqPath === '/api/schedule-scrap-collection' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { requestId, scheduledDate, timeSlot, collectorNotes, sellerUserId } = JSON.parse(body);
+        if (!scheduledDate || !timeSlot) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Pickup date and time slot are required.' }));
+          return;
+        }
+
+        const supabaseAdmin = getAdminClient();
+        if (supabaseAdmin) {
+          await supabaseAdmin.from('scrap_requests').update({
+            status: 'Received',
+            pickup_address: collectorNotes ? `${collectorNotes}` : undefined
+          }).eq('id', requestId);
+
+          if (sellerUserId) {
+            await supabaseAdmin.from('notifications').insert([{
+              user_id: sellerUserId,
+              title: 'Scrap Pickup Scheduled 📅',
+              message: `Recycling dealer scheduled collection for ${scheduledDate} (${timeSlot}). Digital scale weighing will take place at your doorstep.`,
+              notification_type: 'collection_scheduled',
+              reference_id: requestId,
+              is_read: false
+            }]);
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, message: 'Pickup collection scheduled successfully.' }));
+      } catch (err) {
+        console.error('Error in /api/schedule-scrap-collection:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Record Doorstep Actual Scrap Weight (Strict ≥ 10 kg Check)
+  if (reqPath === '/api/record-scrap-weight' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { requestId, actualWeightKg, agreedRatePerKg, scaleRemarks, sellerUserId } = JSON.parse(body);
+        const actualKg = parseFloat(actualWeightKg);
+        const rate = parseFloat(agreedRatePerKg) || 14;
+
+        if (!actualKg || actualKg < 10.0) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            success: false,
+            error: 'Minimum scrap weight is strictly 10.0 kg. Quantities under 10 kg cannot be processed as commercial recycling.'
+          }));
+          return;
+        }
+
+        const finalAmount = Math.round(actualKg * rate * 100) / 100;
+        const supabaseAdmin = getAdminClient();
+        if (supabaseAdmin) {
+          await supabaseAdmin.from('scrap_requests').update({
+            status: 'Payment Pending'
+          }).eq('id', requestId);
+
+          if (sellerUserId) {
+            await supabaseAdmin.from('notifications').insert([{
+              user_id: sellerUserId,
+              title: 'Scrap Weighed on Digital Scale ⚖️',
+              message: `Actual weight recorded: ${actualKg} kg at ₹${rate}/kg. Final payout: ₹${finalAmount.toFixed(2)}. Please confirm receipt once paid.`,
+              notification_type: 'weight_recorded',
+              reference_id: requestId,
+              is_read: false
+            }]);
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: true,
+          actualWeightKg: actualKg,
+          finalAmount,
+          message: `Actual weight of ${actualKg} kg recorded. Payable amount calculated at ₹${finalAmount.toFixed(2)}.`
+        }));
+      } catch (err) {
+        console.error('Error in /api/record-scrap-weight:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Two-Party Transaction Completion Confirmation
+  if (reqPath === '/api/confirm-transaction' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { transactionId, type, requestId, userId, partnerUserId } = JSON.parse(body);
+        const supabaseAdmin = getAdminClient();
+        if (supabaseAdmin) {
+          if (type === 'book') {
+            await supabaseAdmin.from('book_requests').update({ status: 'Completed' }).eq('id', requestId);
+          } else {
+            await supabaseAdmin.from('scrap_requests').update({ status: 'Completed' }).eq('id', requestId);
+          }
+
+          if (transactionId) {
+            await supabaseAdmin.from('transactions').update({
+              status: 'completed',
+              completed_at: new Date().toISOString()
+            }).eq('id', transactionId);
+
+            await supabaseAdmin.from('payment_records').update({
+              seller_confirmed: true,
+              status: 'confirmed'
+            }).eq('transaction_id', transactionId);
+          }
+
+          if (partnerUserId) {
+            await supabaseAdmin.from('notifications').insert([{
+              user_id: partnerUserId,
+              title: 'Order Completed & Confirmed ✅',
+              message: 'Both parties confirmed delivery and payment receipt. Order has been marked COMPLETED.',
+              notification_type: 'order_completed',
+              reference_id: requestId,
+              is_read: false
+            }]);
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, message: 'Transaction finalized and marked Completed with two-party confirmation.' }));
+      } catch (err) {
+        console.error('Error in /api/confirm-transaction:', err);
         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }
