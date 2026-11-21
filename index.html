@@ -2576,6 +2576,14 @@
       </div>
 
       <div class="py-4 space-y-3">
+        <!-- Helpful Direct Sign-In Shortcut -->
+        <div class="bg-blue-50 border border-blue-200 text-blue-900 text-[11px] p-2.5 rounded-xl flex items-center justify-between gap-2">
+          <span>💡 <strong>Already verified?</strong> If your account is confirmed, you do not need an email:</span>
+          <button type="button" onclick="closeModal('modal-resend-verification'); openLoginPortal('user');" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-1 px-2.5 rounded-lg whitespace-nowrap shadow-sm text-[10px]">
+            Sign In
+          </button>
+        </div>
+
         <div id="resend-verification-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl leading-relaxed">
           <span id="resend-verification-error-msg">Please enter your registered email.</span>
         </div>
@@ -3296,6 +3304,6 @@
   </div>
 
 <script src="supabase-config.js?v=1794165948831"></script>
-  <script src="app.js?v=20261120_forgot_password_v3"></script>
+  <script src="app.js?v=20261121_complete_repair_v5"></script>
 </body>
 </html>

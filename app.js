@@ -107,6 +107,25 @@ function openLoginPortal(role = 'user') {
   }
 }
 
+function openLoginModal(role = 'user', prefillEmail = '') {
+  openLoginPortal(role);
+  if (prefillEmail) {
+    let emailField = null;
+    if (role === 'stall' || role === 'book_stall') {
+      emailField = document.getElementById('stall-login-email');
+    } else if (role === 'scrap' || role === 'raddi_owner') {
+      emailField = document.getElementById('scrap-login-email');
+    } else {
+      emailField = document.getElementById('user-login-email');
+    }
+    if (emailField) {
+      emailField.value = prefillEmail;
+    }
+    const pwdField = document.getElementById(`${role}-login-password`) || document.getElementById('user-login-password');
+    if (pwdField) pwdField.focus();
+  }
+}
+
 // 1. NORMAL USER AUTH TAB SWITCHER
 function switchUserAuthTab(tab) {
   const signinBtn = document.getElementById('tab-user-signin');
@@ -968,10 +987,16 @@ async function handleResendVerificationSubmit(event) {
       } else {
         if (backendData.alreadyVerified) {
           if (succBox && succMsg) {
-            succMsg.textContent = backendData.error || 'Your email is already verified! You can sign in directly.';
+            succMsg.innerHTML = `
+              <div class="font-extrabold text-emerald-950 mb-1 text-sm">✅ Account Already Active & Verified!</div>
+              <p class="text-emerald-800 text-xs mb-2 leading-relaxed">Your email address (<strong>${email}</strong>) is already verified in our database. No activation link is required.</p>
+              <button type="button" onclick="closeModal('modal-resend-verification'); openLoginModal('user', '${email}');" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-2 px-3 rounded-lg text-xs shadow-md transition flex items-center justify-center gap-1.5">
+                <span>👉 Click here to Sign In with ${email}</span>
+              </button>
+            `;
             succBox.classList.remove('hidden');
           }
-          showToast('Account already verified! Please sign in.', 'info');
+          showToast('Account already verified! Please sign in.', 'success');
           return;
         }
         if (backendData.rateLimited) {
@@ -1008,7 +1033,18 @@ async function handleResendVerificationSubmit(event) {
     const friendly = formatAuthErrorMessage(err);
     if (errBox && errMsg) {
       if (isRateLimit) {
-        errMsg.innerHTML = `<div>${friendly}</div><div class="mt-2.5 pt-2 border-t border-rose-200 flex flex-col gap-1.5"><span class="font-semibold text-slate-700">Account already verified?</span><button type="button" onclick="closeModal('modal-resend-verification'); openLoginModal('user');" class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-1.5 px-3 rounded-lg text-xs text-center shadow transition">Sign In directly to Student Portal</button></div>`;
+        errMsg.innerHTML = `
+          <div class="font-bold text-rose-950 mb-1">⏳ Supabase Email Rate Limit Reached</div>
+          <p class="text-rose-800 text-xs mb-2 leading-relaxed">Supabase free tier restricts verification emails per hour. If your account (<strong>${email}</strong>) is already registered, you can sign in directly or recover your password.</p>
+          <div class="pt-2 border-t border-rose-200 flex flex-col gap-1.5">
+            <button type="button" onclick="closeModal('modal-resend-verification'); openLoginModal('user', '${email}');" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-3 rounded-lg text-xs text-center shadow transition">
+              👉 Sign In directly with ${email}
+            </button>
+            <button type="button" onclick="closeModal('modal-resend-verification'); openForgotPasswordModal('user', '${email}');" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-1.5 px-3 rounded-lg text-xs text-center border border-slate-300 transition">
+              🔑 Forgot Password? Reset Password Here
+            </button>
+          </div>
+        `;
       } else {
         errMsg.textContent = friendly;
       }
@@ -4128,18 +4164,42 @@ async function handleBookSubmit(event) {
         });
       }
 
-      // Notify approved book stalls
-      const { data: stalls } = await supabase.from('book_stalls').select('user_id').eq('approval_status', 'approved');
-      if (stalls) {
-        for (const s of stalls) {
-          await supabase.from('notifications').insert({
-            user_id: s.user_id,
-            title: 'New Book Request Available 📚',
-            message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`,
-            notification_type: 'new_book_request',
-            reference_id: newReq.id
-          });
+      // Notify approved book stalls (via backend dispatcher and client fallback)
+      try {
+        await fetch('/api/notify-owners', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'book_upload',
+            requestId: newReq.id,
+            bookTitle: titles[0],
+            author: authors[0],
+            condition: conditions[0],
+            price: grandEstimatedPayout,
+            pickupLocation: pickupAddress || 'Local Campus',
+            title: 'New Used Textbook Available 📚',
+            message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`
+          })
+        });
+      } catch (backendErr) {
+        console.warn('Backend notification dispatch notice:', backendErr);
+      }
+
+      try {
+        const { data: stalls } = await supabase.from('book_stalls').select('user_id').eq('approval_status', 'approved');
+        if (stalls) {
+          for (const s of stalls) {
+            await supabase.from('notifications').insert({
+              user_id: s.user_id,
+              title: 'New Book Request Available 📚',
+              message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`,
+              notification_type: 'new_book_request',
+              reference_id: newReq.id
+            });
+          }
         }
+      } catch (clientNotifErr) {
+        // RLS handled via backend dispatcher
       }
 
     } catch (err) {
@@ -4243,18 +4303,41 @@ async function handleRaddiSubmit(event) {
         });
       }
 
-      // Notify approved scrap owners
-      const { data: owners } = await supabase.from('scrap_owners').select('user_id').eq('approval_status', 'approved');
-      if (owners) {
-        for (const o of owners) {
-          await supabase.from('notifications').insert({
-            user_id: o.user_id,
+      // Notify approved scrap owners (via backend dispatcher and client fallback)
+      try {
+        await fetch('/api/notify-owners', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'scrap_request',
+            requestId: newScrap.id,
+            weightKg: weight,
+            paperType: paperType,
+            pinCode: pin,
+            address: address,
             title: 'New Scrap Pickup Request (≥ 10 kg) ♻️',
-            message: `${weight} kg of ${paperType} in area PIN ${pin}. Doorstep pickup requested.`,
-            notification_type: 'new_scrap_request',
-            reference_id: newScrap.id
-          });
+            message: `${weight} kg of ${paperType} in area PIN ${pin}. Doorstep pickup requested.`
+          })
+        });
+      } catch (backendErr) {
+        console.warn('Backend notification dispatch notice:', backendErr);
+      }
+
+      try {
+        const { data: owners } = await supabase.from('scrap_owners').select('user_id').eq('approval_status', 'approved');
+        if (owners) {
+          for (const o of owners) {
+            await supabase.from('notifications').insert({
+              user_id: o.user_id,
+              title: 'New Scrap Pickup Request (≥ 10 kg) ♻️',
+              message: `${weight} kg of ${paperType} in area PIN ${pin}. Doorstep pickup requested.`,
+              notification_type: 'new_scrap_request',
+              reference_id: newScrap.id
+            });
+          }
         }
+      } catch (clientNotifErr) {
+        // RLS handled via backend dispatcher
       }
 
     } catch (err) {
@@ -5340,20 +5423,102 @@ function openNotificationsModal() {
 
   if (!container) return;
 
-  if (state.notifications.length === 0) {
+  if (!state.notifications || state.notifications.length === 0) {
     container.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">You are all caught up! No notifications.</div>';
     return;
   }
 
-  container.innerHTML = state.notifications.map(n => `
-    <div class="py-2.5 ${n.is_read ? 'opacity-70' : 'bg-amber-50/60 p-2 rounded-lg font-medium'} text-xs">
-      <div class="flex items-center justify-between">
-        <strong class="text-slate-900">${n.title}</strong>
-        <span class="text-[10px] text-slate-400">${new Date(n.created_at).toLocaleDateString()}</span>
+  container.innerHTML = state.notifications.map(n => {
+    let actionBtn = '';
+    if (n.notification_type === 'new_book_request') {
+      actionBtn = `
+        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-shelf-forest hover:bg-emerald-800 text-amber-300 font-bold text-[11px] rounded-lg shadow-sm transition">
+          <span>📚 View Book & Make Offer</span>
+          <span>→</span>
+        </button>
+      `;
+    } else if (n.notification_type === 'new_scrap_request') {
+      actionBtn = `
+        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
+          <span>♻️ View Scrap & Schedule Pickup</span>
+          <span>→</span>
+        </button>
+      `;
+    } else if (['counter_offer', 'collection_scheduled', 'weight_recorded', 'order_completed'].includes(n.notification_type)) {
+      actionBtn = `
+        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
+          <span>📦 View Order Details</span>
+          <span>→</span>
+        </button>
+      `;
+    } else if (n.notification_type === 'account_approved') {
+      actionBtn = `
+        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
+          <span>🚀 Open Dashboard Console</span>
+          <span>→</span>
+        </button>
+      `;
+    }
+
+    return `
+      <div class="p-3 mb-2 rounded-xl border ${n.is_read ? 'bg-white border-slate-200 opacity-75' : 'bg-amber-50/80 border-amber-200 font-medium'} text-xs shadow-sm transition">
+        <div class="flex items-center justify-between gap-2">
+          <strong class="text-slate-900 flex items-center gap-1">
+            ${!n.is_read ? '<span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>' : ''}
+            ${n.title}
+          </strong>
+          <span class="text-[10px] text-slate-400 whitespace-nowrap">${new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        <p class="text-slate-600 mt-1 leading-relaxed">${n.message}</p>
+        ${actionBtn}
       </div>
-      <p class="text-slate-600 mt-0.5">${n.message}</p>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+}
+
+async function handleNotificationClick(notifId, type, refId) {
+  // Mark as read in Supabase and local state
+  if (supabase && notifId) {
+    try {
+      await supabase.from('notifications').update({ is_read: true }).eq('id', notifId);
+    } catch (e) {}
+  }
+  const notif = state.notifications.find(n => n.id === notifId);
+  if (notif) notif.is_read = true;
+  updateNotificationBellUI();
+  closeModal('modal-notifications');
+
+  // Direct contextual navigation
+  if (type === 'new_book_request') {
+    if (state.currentUser?.role === 'book_stall') {
+      showSection('stall-dashboard');
+      setStallTab('incoming-requests');
+      if (refId && refId !== 'null' && refId !== 'undefined') {
+        setTimeout(() => {
+          if (typeof openBookOfferModal === 'function') openBookOfferModal(refId);
+        }, 350);
+      }
+    } else {
+      showSection('browse-books');
+    }
+  } else if (type === 'new_scrap_request') {
+    if (state.currentUser?.role === 'scrap_owner' || state.currentUser?.role === 'raddi_owner') {
+      showSection('scrap-dashboard');
+      setScrapTab('pickup-requests');
+    } else {
+      showSection('browse-raddi');
+    }
+  } else if (type === 'account_approved') {
+    if (state.currentUser?.role === 'book_stall') {
+      showSection('stall-dashboard');
+    } else if (state.currentUser?.role === 'scrap_owner' || state.currentUser?.role === 'raddi_owner') {
+      showSection('scrap-dashboard');
+    } else {
+      showSection('dashboard');
+    }
+  } else {
+    showSection('dashboard');
+  }
 }
 
 function updateNotificationBellUI() {

@@ -237,7 +237,9 @@ const server = http.createServer((req, res) => {
           res.end(JSON.stringify({
             success: false,
             alreadyVerified: true,
-            error: 'Your email is already verified! You can sign in directly.'
+            email: cleanEmail,
+            role: foundUser.user_metadata?.role || 'seller',
+            error: `Your account (${cleanEmail}) is already verified! You can sign in directly.`
           }));
           return;
         }
@@ -1006,6 +1008,149 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ success: true, message: 'Transaction finalized and marked Completed with two-party confirmation.' }));
       } catch (err) {
         console.error('Error in /api/confirm-transaction:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Multi-Role Notification Dispatcher (Bypasses Client RLS)
+  if (reqPath === '/api/notify-owners' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { type, requestId, title, message, bookTitle, author, condition, price, pickupLocation, weightKg, paperType, pinCode, address, targetUserId } = JSON.parse(body || '{}');
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Database admin client unavailable.' }));
+          return;
+        }
+
+        const isUuid = str => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+        const refUuid = isUuid(requestId) ? requestId : null;
+
+        let insertedCount = 0;
+
+        if (type === 'book_upload') {
+          // Fetch all approved book stall owners
+          const { data: stalls, error: stallErr } = await supabaseAdmin
+            .from('book_stalls')
+            .select('user_id, stall_name, pincode, address')
+            .eq('approval_status', 'approved');
+
+          if (stallErr) throw stallErr;
+
+          if (stalls && stalls.length > 0) {
+            const notifs = stalls.map(s => ({
+              user_id: s.user_id,
+              title: title || 'New Used Textbook Available 📚',
+              message: message || `${bookTitle || 'Textbook'} by ${author || 'Unknown'} (${condition || 'Good'}). Expected: ₹${price || '0'} | Location: ${pickupLocation || 'Local Campus'}`,
+              notification_type: 'new_book_request',
+              reference_id: refUuid,
+              is_read: false
+            }));
+
+            const { data: inserted, error: insErr } = await supabaseAdmin.from('notifications').insert(notifs).select();
+            if (insErr) throw insErr;
+            insertedCount = inserted?.length || notifs.length;
+          }
+        } else if (type === 'scrap_request') {
+          // Scrap collection request: enforce minimum 10.0 kg
+          const kg = parseFloat(weightKg || 0);
+          if (kg < 10.0) {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ success: false, error: 'Minimum scrap weight is strictly 10.0 kg.' }));
+            return;
+          }
+
+          // Fetch all approved scrap recycling owners
+          const { data: scrapOwners, error: scrapErr } = await supabaseAdmin
+            .from('scrap_owners')
+            .select('user_id, business_name, pincode, address, base_area')
+            .eq('approval_status', 'approved');
+
+          if (scrapErr) throw scrapErr;
+
+          if (scrapOwners && scrapOwners.length > 0) {
+            const notifs = scrapOwners.map(o => ({
+              user_id: o.user_id,
+              title: title || 'New Scrap Collection Request (≥ 10 kg) ♻️',
+              message: message || `${kg} kg of ${paperType || 'Paper Scrap'}. Pickup at PIN ${pinCode || ''}, ${address || 'Customer Location'}`,
+              notification_type: 'new_scrap_request',
+              reference_id: refUuid,
+              is_read: false
+            }));
+
+            const { data: inserted, error: insErr } = await supabaseAdmin.from('notifications').insert(notifs).select();
+            if (insErr) throw insErr;
+            insertedCount = inserted?.length || notifs.length;
+          }
+        } else if (targetUserId) {
+          // Direct notification to specific user (e.g. counter-offer, approval, rejection)
+          const { error: insErr } = await supabaseAdmin.from('notifications').insert([{
+            user_id: targetUserId,
+            title: title || 'Order Update',
+            message: message || '',
+            notification_type: type || 'system_notice',
+            reference_id: refUuid,
+            is_read: false
+          }]);
+          if (insErr) throw insErr;
+          insertedCount = 1;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, count: insertedCount, message: `Dispatched ${insertedCount} notification(s).` }));
+      } catch (err) {
+        console.error('Error in /api/notify-owners:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API endpoint: Verify user account status (already verified or pending)
+  if (reqPath === '/api/check-user-status' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email } = JSON.parse(body || '{}');
+        if (!email || !email.includes('@')) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Valid email required' }));
+          return;
+        }
+        const cleanEmail = email.trim().toLowerCase();
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: false, error: 'Database unavailable' }));
+          return;
+        }
+        const { data, error } = await supabaseAdmin.auth.admin.listUsers();
+        if (error) throw error;
+        const user = (data?.users || []).find(u => u.email?.toLowerCase() === cleanEmail);
+        if (!user) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: true, exists: false, isVerified: false }));
+          return;
+        }
+        const isVerified = !!user.email_confirmed_at;
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: true,
+          exists: true,
+          isVerified,
+          email: user.email,
+          fullName: user.user_metadata?.full_name || '',
+          role: user.user_metadata?.role || 'seller'
+        }));
+      } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }
