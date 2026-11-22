@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Password - SECOND SHELF</title>
+  <meta name="description" content="Secure password recovery for SECOND SHELF college textbook & scrap marketplace.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231b4332'><path d='M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z'/><path d='M6 2v20'/></svg>">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            shelf: {
+              dark: '#0f261c',
+              navy: '#131921',
+              forest: '#1b4332',
+              emerald: '#2d6a4f',
+              lightgreen: '#d8f3dc',
+              cream: '#fdfbf7',
+              creamborder: '#ede8dd',
+              gold: '#f59e0b',
+              goldhover: '#d97706',
+              yellow: '#febd69'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+  
+  <!-- Supabase JS CDN (Official v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../supabase-config.js?v=20261121_reset_pwd"></script>
+
+  <style>
+    .amazon-focus:focus {
+      outline: 2px solid #f59e0b;
+      outline-offset: 1px;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col font-sans antialiased selection:bg-amber-100 selection:text-amber-900">
+
+  <!-- Minimal Brand Header -->
+  <header class="bg-shelf-dark text-white border-b-2 border-amber-400 py-3.5 px-4 sm:px-8 shadow-md">
+    <div class="max-w-4xl mx-auto flex items-center justify-between">
+      <a href="../" class="flex items-center gap-3 group focus:outline-none">
+        <div class="w-10 h-10 rounded-xl bg-shelf-forest border border-amber-400 flex items-center justify-center text-amber-300 text-xl font-black shadow-md group-hover:scale-105 transition-transform">
+          📚
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5 leading-none">
+            <span class="text-lg font-black tracking-wider text-white">SECOND</span>
+            <span class="text-lg font-black tracking-wider text-amber-400">SHELF</span>
+          </div>
+          <span class="text-[10px] text-amber-200/80 font-medium tracking-tight block mt-0.5">Give Old Books a Second Life</span>
+        </div>
+      </a>
+      <a href="../" class="text-xs font-semibold text-slate-300 hover:text-amber-300 transition flex items-center gap-1">
+        <span>← Back to Marketplace</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Recovery Container -->
+  <main class="flex-1 flex items-center justify-center p-4 sm:p-6">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 sm:p-8 border border-slate-200 relative overflow-hidden">
+
+      <!-- Top Accent Bar -->
+      <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-600 via-amber-400 to-emerald-600"></div>
+
+      <!-- Header Icon & Titles -->
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-2xl text-amber-600 shadow-sm mb-3">
+          🔒
+        </div>
+        <h1 class="text-xl font-extrabold text-slate-900">Reset Your Password</h1>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+          Create a new secure password for your SECOND SHELF account.
+        </p>
+      </div>
+
+      <!-- STATE 1: VERIFYING RECOVERY TOKEN / PKCE CODE -->
+      <div id="state-verifying" class="py-8 text-center space-y-3">
+        <div class="inline-block animate-spin text-3xl text-emerald-700">🔄</div>
+        <h3 class="text-sm font-bold text-slate-800">Verifying Password Recovery Link...</h3>
+        <p class="text-xs text-slate-500 max-w-xs mx-auto">
+          Please wait while we validate your secure cryptographic authorization token with Supabase.
+        </p>
+      </div>
+
+      <!-- STATE 2: EXPIRED / INVALID RECOVERY LINK -->
+      <div id="state-expired" class="hidden space-y-4 py-2">
+        <div class="bg-rose-50 border border-rose-300 text-rose-900 rounded-xl p-4 text-xs space-y-2">
+          <div class="flex items-center gap-2 font-bold text-sm text-rose-800">
+            <span>⚠️</span>
+            <span>Recovery Link Expired or Invalid</span>
+          </div>
+          <p class="leading-relaxed text-rose-700" id="expired-error-desc">
+            This password recovery link has already been used or has exceeded its time limit. For your account security, password reset links can only be used once.
+          </p>
+        </div>
+
+        <div class="space-y-2 pt-2">
+          <a href="../#forgot-password" onclick="sessionStorage.setItem('OPEN_FORGOT_PWD', 'true');" class="block w-full text-center bg-shelf-forest hover:bg-emerald-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition">
+            Request Fresh Password Reset Link →
+          </a>
+          <a href="../" class="block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl text-xs border border-slate-300 transition">
+            Return to Homepage
+          </a>
+        </div>
+      </div>
+
+      <!-- STATE 3: SET NEW PASSWORD FORM -->
+      <div id="state-form" class="hidden space-y-4">
+
+        <!-- Account Badge -->
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-700 text-base">👤</span>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider font-extrabold text-emerald-700">Account Verified</div>
+              <div class="text-xs font-bold text-slate-900" id="account-email-display">user@example.com</div>
+            </div>
+          </div>
+          <span class="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-bold">Secure</span>
+        </div>
+
+        <!-- Error & Alert Box -->
+        <div id="form-error-box" class="hidden bg-rose-50 border border-rose-300 text-rose-800 text-xs p-3 rounded-xl flex items-start gap-2">
+          <span class="flex-shrink-0 text-base">⚠️</span>
+          <span id="form-error-msg" class="leading-relaxed">Error updating password.</span>
+        </div>
+
+        <form id="form-reset-password" onsubmit="handlePasswordUpdate(event)" class="space-y-4">
+          <!-- New Password -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1" for="new-password">
+              New Password *
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">🔒</span>
+              <input 
+                type="password" 
+                id="new-password" 
+                required 
+                minlength="8" 
+                placeholder="At least 8 characters" 
+                class="w-full text-xs pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 amazon-focus font-medium text-slate-900" 
+              />
+              <button 
+                type="button" 
+                onclick="togglePwdVisibility('new-password', this)" 
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs" 
+                title="Show/Hide Password"
+              >👁️</button>
+            </div>
+          </div>
+
+          <!-- Confirm New Password -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1" for="confirm-password">
+              Confirm New Password *
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm pointer-events-none">🔒</span>
+              <input 
+                type="password" 
+                id="confirm-password" 
+                required 
+                minlength="8" 
+                placeholder="Re-enter your new password" 
+                class="w-full text-xs pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 amazon-focus font-medium text-slate-900" 
+              />
+              <button 
+                type="button" 
+                onclick="togglePwdVisibility('confirm-password', this)" 
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 text-xs" 
+                title="Show/Hide Password"
+              >👁️</button>
+            </div>
+          </div>
+
+          <!-- Requirements Checklist -->
+          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+            <div class="font-bold text-slate-700 mb-1">Password Requirements:</div>
+            <div id="rule-length" class="flex items-center gap-1.5 text-slate-500">
+              <span>⚪</span> Must be at least 8 characters long
+            </div>
+            <div id="rule-match" class="flex items-center gap-1.5 text-slate-500">
+              <span>⚪</span> Both passwords must match exactly
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <button 
+            type="submit" 
+            id="btn-update-password" 
+            class="w-full bg-shelf-gold hover:bg-shelf-goldhover text-slate-950 font-black py-2.5 rounded-xl text-xs shadow-md transition flex items-center justify-center gap-2 border border-amber-500"
+          >
+            <span id="btn-spinner" class="hidden animate-spin">🔄</span>
+            <span id="btn-text">Confirm & Update Password</span>
+            <span>→</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- STATE 4: SUCCESS CONFIRMATION -->
+      <div id="state-success" class="hidden space-y-4 py-3 text-center">
+        <div class="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-3xl shadow-inner">
+          ✅
+        </div>
+        <h3 class="text-base font-extrabold text-slate-900">Password Updated Successfully!</h3>
+        <p class="text-xs text-slate-600 leading-relaxed max-w-xs mx-auto">
+          Your new password has been confirmed and saved. For your protection, the temporary password recovery session has been terminated.
+        </p>
+
+        <div class="pt-3 border-t border-slate-200 space-y-2">
+          <a href="../#signin" class="block w-full bg-shelf-forest hover:bg-emerald-800 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <span>👉 Proceed to Sign In with New Password</span>
+            <span>→</span>
+          </a>
+          <a href="../" class="block w-full text-center text-xs text-slate-500 hover:text-slate-900 font-semibold py-1.5">
+            Return to Homepage
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-4 text-center text-[11px] text-slate-400 border-t border-slate-200 bg-white">
+    SECOND SHELF &copy; 2026. Secure Authentication Powered by Supabase.
+  </footer>
+
+  <!-- Recovery Engine Script -->
+  <script>
+    let supabaseClient = null;
+    let verifiedSession = null;
+
+    function getSb() {
+      if (supabaseClient) return supabaseClient;
+      const conf = window.SECOND_SHELF_CONFIG || {};
+      const url = conf.supabaseUrl || 'https://taujwlvvuxbsfqiemhgv.supabase.co';
+      const key = conf.supabaseAnonKey || 'sb_publishable_RoDhwATknYzsKDsQ8G4ugw_VR3elBQl';
+      const lib = window.supabaseLib || window.supabase;
+      if (lib && typeof lib.createClient === 'function') {
+        supabaseClient = lib.createClient(url, key, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        });
+      }
+      return supabaseClient;
+    }
+
+    function togglePwdVisibility(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        if (btn) btn.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        if (btn) btn.textContent = '👁️';
+      }
+    }
+
+    function showState(stateName) {
+      document.getElementById('state-verifying').classList.add('hidden');
+      document.getElementById('state-expired').classList.add('hidden');
+      document.getElementById('state-form').classList.add('hidden');
+      document.getElementById('state-success').classList.add('hidden');
+
+      const target = document.getElementById(`state-${stateName}`);
+      if (target) target.classList.remove('hidden');
+    }
+
+    // Dynamic password rules validation
+    const newPwdInput = document.getElementById('new-password');
+    const confPwdInput = document.getElementById('confirm-password');
+
+    function checkRules() {
+      const p1 = newPwdInput?.value || '';
+      const p2 = confPwdInput?.value || '';
+      const ruleLen = document.getElementById('rule-length');
+      const ruleMatch = document.getElementById('rule-match');
+
+      if (ruleLen) {
+        if (p1.length >= 8) {
+          ruleLen.innerHTML = '<span class="text-emerald-600 font-bold">✅</span> <span class="text-emerald-700 font-semibold">At least 8 characters long</span>';
+        } else {
+          ruleLen.innerHTML = '<span>⚪</span> Must be at least 8 characters long';
+        }
+      }
+
+      if (ruleMatch) {
+        if (p1.length > 0 && p1 === p2) {
+          ruleMatch.innerHTML = '<span class="text-emerald-600 font-bold">✅</span> <span class="text-emerald-700 font-semibold">Both passwords match</span>';
+        } else {
+          ruleMatch.innerHTML = '<span>⚪</span> Both passwords must match exactly';
+        }
+      }
+    }
+
+    newPwdInput?.addEventListener('input', checkRules);
+    confPwdInput?.addEventListener('input', checkRules);
+
+    // Initialize Recovery Verification
+    async function initRecovery() {
+      const sb = getSb();
+      if (!sb) {
+        console.error('Supabase library unavailable.');
+        document.getElementById('expired-error-desc').textContent = 'Unable to connect to authentication server. Please check your internet connection.';
+        showState('expired');
+        return;
+      }
+
+      const searchParams = new URLSearchParams(window.location.search || '');
+      const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+
+      // Check for GoTrue error parameters
+      const errorParam = searchParams.get('error') || hashParams.get('error');
+      const errorCode = searchParams.get('error_code') || hashParams.get('error_code');
+      const errorDesc = searchParams.get('error_description') || hashParams.get('error_description');
+
+      if (errorParam || errorCode) {
+        console.warn('URL contains error params:', errorCode, errorDesc);
+        if (errorDesc) {
+          document.getElementById('expired-error-desc').textContent = decodeURIComponent(errorDesc).replace(/\+/g, ' ');
+        }
+        showState('expired');
+        return;
+      }
+
+      // 1. Check for PKCE Authorization Code: ?code=xxxx
+      const code = searchParams.get('code');
+      if (code) {
+        console.log('PKCE authorization code detected in URL. Exchanging code for session...');
+        try {
+          const { data, error } = await sb.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error('PKCE exchange error:', error);
+            document.getElementById('expired-error-desc').textContent = error.message || 'The password reset authorization code has expired or is invalid.';
+            showState('expired');
+            return;
+          }
+          if (data?.session) {
+            verifiedSession = data.session;
+            readyPasswordForm(data.session);
+            return;
+          }
+        } catch (e) {
+          console.error('PKCE exchange exception:', e);
+          showState('expired');
+          return;
+        }
+      }
+
+      // 2. Check for token_hash OTP verification: ?token_hash=xxxx&type=recovery
+      const tokenHash = searchParams.get('token_hash') || hashParams.get('token_hash');
+      const type = searchParams.get('type') || hashParams.get('type') || 'recovery';
+      if (tokenHash) {
+        console.log('Direct token_hash detected in URL. Verifying OTP...');
+        try {
+          const { data, error } = await sb.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: 'recovery'
+          });
+          if (error) {
+            console.error('OTP verify error:', error);
+            document.getElementById('expired-error-desc').textContent = error.message || 'Password reset token has expired or is invalid.';
+            showState('expired');
+            return;
+          }
+          if (data?.session) {
+            verifiedSession = data.session;
+            readyPasswordForm(data.session);
+            return;
+          }
+        } catch (e) {
+          console.error('OTP exception:', e);
+          showState('expired');
+          return;
+        }
+      }
+
+      // 3. Check for implicit hash session: #access_token=xxxx&type=recovery
+      const { data: { session } } = await sb.auth.getSession();
+      if (session && session.user) {
+        console.log('Active recovery session found via getSession().');
+        verifiedSession = session;
+        readyPasswordForm(session);
+        return;
+      }
+
+      // 4. Listen for PASSWORD_RECOVERY event if GoTrue is still processing hash
+      const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
+          verifiedSession = session;
+          readyPasswordForm(session);
+        }
+      });
+
+      // Timeout fallback: if no recovery session detected after 4 seconds
+      setTimeout(async () => {
+        const { data: { session: finalCheck } } = await sb.auth.getSession();
+        if (!finalCheck && !verifiedSession) {
+          console.warn('No recovery session detected after timeout.');
+          document.getElementById('expired-error-desc').textContent = 'No active password reset session was found. Please request a new recovery link.';
+          showState('expired');
+        }
+      }, 4000);
+    }
+
+    function readyPasswordForm(session) {
+      const email = session?.user?.email || 'Your Registered Account';
+      const emailDisplay = document.getElementById('account-email-display');
+      if (emailDisplay) emailDisplay.textContent = email;
+
+      showState('form');
+      try {
+        history.replaceState(null, document.title, window.location.pathname);
+      } catch (e) {}
+
+      document.getElementById('new-password')?.focus();
+    }
+
+    async function handlePasswordUpdate(event) {
+      event.preventDefault();
+      const sb = getSb();
+      const password = document.getElementById('new-password')?.value || '';
+      const confirm = document.getElementById('confirm-password')?.value || '';
+      const errBox = document.getElementById('form-error-box');
+      const errMsg = document.getElementById('form-error-msg');
+      const submitBtn = document.getElementById('btn-update-password');
+      const spinner = document.getElementById('btn-spinner');
+      const btnText = document.getElementById('btn-text');
+
+      if (errBox) errBox.classList.add('hidden');
+
+      if (!password || password.length < 8) {
+        if (errBox && errMsg) {
+          errMsg.textContent = 'Password must be at least 8 characters long.';
+          errBox.classList.remove('hidden');
+        }
+        return;
+      }
+
+      if (password !== confirm) {
+        if (errBox && errMsg) {
+          errMsg.textContent = 'Passwords do not match. Please ensure both fields are identical.';
+          errBox.classList.remove('hidden');
+        }
+        return;
+      }
+
+      if (spinner) spinner.classList.remove('hidden');
+      if (btnText) btnText.textContent = 'Saving Password to Supabase...';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+      }
+
+      try {
+        const { data, error } = await sb.auth.updateUser({
+          password: password
+        });
+
+        if (error) throw error;
+
+        // Sign out of recovery session so user explicitly signs in with new password
+        await sb.auth.signOut();
+
+        showState('success');
+
+        // Optional auto-redirect after 3.5 seconds
+        setTimeout(() => {
+          window.location.href = '../#signin';
+        }, 3500);
+
+      } catch (err) {
+        console.error('Password update failure:', err);
+        let msg = err.message || 'Failed to update password.';
+        if (err.code === 'same_password' || (err.message && err.message.toLowerCase().includes('different from the old'))) {
+          msg = 'The new password must be different from your old password.';
+        }
+        if (errBox && errMsg) {
+          errMsg.textContent = msg;
+          errBox.classList.remove('hidden');
+        }
+      } finally {
+        if (spinner) spinner.classList.add('hidden');
+        if (btnText) btnText.textContent = 'Confirm & Update Password';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+      }
+    }
+
+    // Run recovery check on load
+    window.addEventListener('DOMContentLoaded', initRecovery);
+  </script>
+</body>
+</html>

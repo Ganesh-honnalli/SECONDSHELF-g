@@ -176,7 +176,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       supabaseUrl: env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
       supabaseAnonKey: env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '',
-      appUrl: env.VITE_APP_URL || `http://localhost:${PORT}`
+      appUrl: env.VITE_APP_URL || CANONICAL_PROD_URL
     }));
     return;
   }
@@ -310,11 +310,11 @@ const server = http.createServer((req, res) => {
 
         const cleanEmail = email.trim().toLowerCase();
 
-        // Check backend 60s cooldown per email
+        // Check backend 30s cooldown per email (Requirement 6)
         const now = Date.now();
         const lastSent = resendCooldowns['pwd_' + cleanEmail] || 0;
-        if (now - lastSent < 60000) {
-          const remaining = Math.ceil((60000 - (now - lastSent)) / 1000);
+        if (now - lastSent < 30000) {
+          const remaining = Math.ceil((30000 - (now - lastSent)) / 1000);
           res.writeHead(429, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({
             success: false,
@@ -348,23 +348,24 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        // Generate official cryptographic recovery link
-        const env = loadEnv();
-        const appUrl = (env.VITE_APP_URL || CANONICAL_PROD_URL).replace(/\/$/, '') + '/';
+        // Dedicated Production Reset Password Destination URL (Never localhost:3000 in production)
+        const resetPageUrl = `${CANONICAL_PROD_URL}reset-password.html`;
         const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
           type: 'recovery',
           email: cleanEmail,
           options: {
-            redirectTo: appUrl
+            redirectTo: resetPageUrl
           }
         });
 
         if (linkErr) throw linkErr;
 
-        // Mobile-safe link: Directly opens deployed GitHub Pages with token_hash.
+        // Mobile-safe link: Directly opens deployed GitHub Pages dedicated reset page with token_hash.
         // Never redirects to localhost:3000 on mobile devices!
         const tokenHash = linkData?.properties?.hashed_token;
-        const directActionLink = tokenHash ? `${CANONICAL_PROD_URL}?token_hash=${tokenHash}&type=recovery` : linkData?.properties?.action_link;
+        const directActionLink = tokenHash 
+          ? `${resetPageUrl}?token_hash=${tokenHash}&type=recovery` 
+          : linkData?.properties?.action_link;
         const actionLink = directActionLink;
         const recipientName = foundUser.user_metadata?.full_name || cleanEmail.split('@')[0];
 
@@ -1160,6 +1161,8 @@ const server = http.createServer((req, res) => {
 
   if (reqPath === '/') {
     reqPath = '/index.html';
+  } else if (reqPath === '/reset-password' || reqPath === '/reset-password/') {
+    reqPath = '/reset-password.html';
   }
 
   const filePath = path.join(__dirname, reqPath);

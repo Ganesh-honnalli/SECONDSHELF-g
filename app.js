@@ -231,6 +231,14 @@ const CANONICAL_PROD_URL = 'https://ganesh-honnalli.github.io/SECONDSHELF-g/';
 const FORGOT_PWD_COOLDOWN_STORAGE_KEY = 'SECOND_SHELF_FORGOT_PWD_COOLDOWN';
 let forgotPwdCooldownInterval = null;
 
+function getPasswordResetRedirectUrl() {
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isLocal) {
+    return `${window.location.origin}/reset-password.html`;
+  }
+  return 'https://ganesh-honnalli.github.io/SECONDSHELF-g/reset-password.html';
+}
+
 function getForgotPwdCooldownRemaining() {
   try {
     const expiry = parseInt(localStorage.getItem(FORGOT_PWD_COOLDOWN_STORAGE_KEY) || '0', 10);
@@ -241,7 +249,8 @@ function getForgotPwdCooldownRemaining() {
   }
 }
 
-function startForgotPwdCooldown(seconds = 60) {
+// 30-Second Cooldown Manager (Requirement 6)
+function startForgotPwdCooldown(seconds = 30) {
   try {
     const expiry = Date.now() + (seconds * 1000);
     localStorage.setItem(FORGOT_PWD_COOLDOWN_STORAGE_KEY, expiry.toString());
@@ -370,8 +379,8 @@ async function handleForgotPasswordSubmit(event) {
     submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
   }
 
-  // Canonical Production Redirect Destination (Never localhost:3000 on mobile devices)
-  const redirectUrl = CANONICAL_PROD_URL;
+  // Dedicated Production Redirect Destination (Never localhost:3000 in production)
+  const redirectUrl = getPasswordResetRedirectUrl();
 
   try {
     let sentViaBackend = false;
@@ -399,11 +408,11 @@ async function handleForgotPasswordSubmit(event) {
           succBox.classList.remove('hidden');
         }
         showToast('Password reset link dispatched! Please check your inbox.', 'success');
-        startForgotPwdCooldown(60);
+        startForgotPwdCooldown(30);
         return;
       } else {
         if (backendData.rateLimited) {
-          startForgotPwdCooldown(backendData.remaining || 60);
+          startForgotPwdCooldown(backendData.remaining || 30);
         }
         throw new Error(backendData.error || 'Failed to dispatch reset link.');
       }
@@ -421,7 +430,7 @@ async function handleForgotPasswordSubmit(event) {
       succBox.classList.remove('hidden');
     }
     showToast('Password reset link sent to ' + email, 'success');
-    startForgotPwdCooldown(60);
+    startForgotPwdCooldown(30);
 
   } catch (err) {
     const isRateLimit = err.status === 429 || 
@@ -429,7 +438,7 @@ async function handleForgotPasswordSubmit(event) {
       err.code === 'over_email_send_rate_limit';
 
     const friendlyMsg = isRateLimit 
-      ? '⏳ Too many password reset requests. Supabase rate limit reached. Please wait 60 seconds before trying again.'
+      ? '⏳ Too many password reset requests. Supabase rate limit reached. Please wait 30 seconds before trying again.'
       : (err.message || 'Unable to dispatch reset link. Please try again.');
 
     if (errBox && errMsg) {
@@ -439,7 +448,7 @@ async function handleForgotPasswordSubmit(event) {
     showToast(friendlyMsg, isRateLimit ? 'warning' : 'error');
 
     if (isRateLimit) {
-      startForgotPwdCooldown(60);
+      startForgotPwdCooldown(30);
     }
   } finally {
     if (spinner) spinner.classList.add('hidden');
@@ -1167,6 +1176,40 @@ function inspectAuthRedirect() {
       } catch (e) {}
       return;
     }
+  }
+
+  // Detect PKCE Authorization Code (?code=...)
+  const code = searchParams.get('code');
+  if (code) {
+    console.log('PKCE authorization code detected in URL! Exchanging code for session...');
+    isPasswordRecoveryMode = true;
+    showToast('Verifying password recovery session...', 'info');
+
+    try {
+      if (!supabase) getSupabase();
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error: cErr }) => {
+        if (cErr) {
+          console.error('PKCE exchange error:', cErr);
+          showToast('Password reset link has expired or is invalid.', 'error');
+          openForgotPasswordModal(state.lastForgotPasswordPortal || 'user');
+          const errBox = document.getElementById('forgot-password-error-box');
+          const errMsg = document.getElementById('forgot-password-error-msg');
+          if (errBox && errMsg) {
+            errMsg.textContent = '⚠️ Your password reset link has expired or has already been used. Please request a fresh reset link below.';
+            errBox.classList.remove('hidden');
+          }
+        } else if (data?.session) {
+          console.log('Recovery session established for:', data.user?.email);
+          openSetNewPasswordModal(data.session);
+        }
+        try {
+          history.replaceState(null, document.title, window.location.pathname);
+        } catch (e) {}
+      });
+    } catch (e) {
+      console.error('Error exchanging code for session:', e);
+    }
+    return;
   }
 
   // Detect active password recovery callback via hash
@@ -3322,11 +3365,29 @@ async function initSupabase() {
       // Load initial live data from PostgreSQL
       await loadInitialDataFromSupabase();
 
-      // Check current auth session
+      // Check current auth session (Security: Clear all logged-in accounts except admin as requested)
       const { data: { session } } = await supabase.auth.getSession();
       if (session && session.user) {
-        state.currentSession = session;
-        await resolveUserProfile(session.user);
+        const uEmail = (session.user.email || '').toLowerCase().trim();
+        const isAdmin = uEmail === MASTER_ADMIN_EMAIL.toLowerCase() || uEmail === 'admin@secondshelf.in';
+        if (!isAdmin && !isPasswordRecoveryMode) {
+          console.log('Clearing non-admin session on load:', uEmail);
+          await supabase.auth.signOut();
+          state.currentUser = null;
+          state.currentSession = null;
+          try {
+            localStorage.removeItem('SECOND_SHELF_CURRENT_USER');
+            localStorage.removeItem('SECOND_SHELF_USER_SESSION');
+            localStorage.removeItem('SECOND_SHELF_REMEMBER_USER_EMAIL');
+            localStorage.removeItem('SECOND_SHELF_REMEMBER_STALL_EMAIL');
+            localStorage.removeItem('SECOND_SHELF_REMEMBER_SCRAP_EMAIL');
+          } catch (e) {}
+          updateUserRoleUI();
+          showSection('home');
+        } else {
+          state.currentSession = session;
+          await resolveUserProfile(session.user);
+        }
       }
 
       // Listen for auth state changes
