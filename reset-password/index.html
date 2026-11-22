@@ -350,7 +350,12 @@
         try {
           const { data, error } = await sb.auth.exchangeCodeForSession(code);
           if (error) {
-            console.error('PKCE exchange error:', error);
+            console.error('PKCE exchange error:', {
+              message: error.message,
+              status: error.status,
+              code: error.code,
+              name: error.name
+            });
             document.getElementById('expired-error-desc').textContent = error.message || 'The password reset authorization code has expired or is invalid.';
             showState('expired');
             return;
@@ -378,7 +383,12 @@
             type: 'recovery'
           });
           if (error) {
-            console.error('OTP verify error:', error);
+            console.error('OTP verify error:', {
+              message: error.message,
+              status: error.status,
+              code: error.code,
+              name: error.name
+            });
             document.getElementById('expired-error-desc').textContent = error.message || 'Password reset token has expired or is invalid.';
             showState('expired');
             return;
@@ -490,7 +500,12 @@
         }, 3500);
 
       } catch (err) {
-        console.error('Password update failure:', err);
+        console.error('Password update failure:', {
+          message: err.message,
+          status: err.status,
+          code: err.code,
+          name: err.name
+        });
         let msg = err.message || 'Failed to update password.';
         if (err.code === 'same_password' || (err.message && err.message.toLowerCase().includes('different from the old'))) {
           msg = 'The new password must be different from your old password.';

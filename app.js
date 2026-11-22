@@ -234,9 +234,9 @@ let forgotPwdCooldownInterval = null;
 function getPasswordResetRedirectUrl() {
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   if (isLocal) {
-    return `${window.location.origin}/reset-password.html`;
+    return `${window.location.origin}/reset-password`;
   }
-  return 'https://ganesh-honnalli.github.io/SECONDSHELF-g/reset-password.html';
+  return 'https://ganesh-honnalli.github.io/SECONDSHELF-g/reset-password';
 }
 
 function getForgotPwdCooldownRemaining() {
@@ -351,7 +351,7 @@ async function handleForgotPasswordSubmit(event) {
   }
 
   const emailInput = document.getElementById('forgot-password-email');
-  const email = emailInput?.value?.trim();
+  const email = (emailInput?.value || '').trim();
   const spinner = document.getElementById('forgot-password-spinner');
   const btnText = document.getElementById('forgot-password-btn-text');
   const submitBtn = document.getElementById('btn-forgot-password');
@@ -379,67 +379,86 @@ async function handleForgotPasswordSubmit(event) {
     submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
   }
 
-  // Dedicated Production Redirect Destination (Never localhost:3000 in production)
+  // Canonical Production Redirect Destination
   const redirectUrl = getPasswordResetRedirectUrl();
 
   try {
-    let sentViaBackend = false;
-    let backendData = null;
+    const { data, error } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      {
+        redirectTo: redirectUrl
+      }
+    );
 
-    // Try backend endpoint first (with Custom SMTP if configured)
-    try {
-      const apiRes = await fetch('/api/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+    if (error) {
+      console.error("Password reset error:", {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        name: error.name
       });
-      if (apiRes.status < 500) {
-        backendData = await apiRes.json();
-        sentViaBackend = true;
-      }
-    } catch (e) {
-      // Backend not running (e.g. static host)
+
+      throw error;
     }
-
-    if (sentViaBackend && backendData) {
-      if (backendData.success) {
-        if (succBox && succMsg) {
-          succMsg.textContent = backendData.message || `Password reset instructions dispatched to ${email}! Please check your inbox and spam folder.`;
-          succBox.classList.remove('hidden');
-        }
-        showToast('Password reset link dispatched! Please check your inbox.', 'success');
-        startForgotPwdCooldown(30);
-        return;
-      } else {
-        if (backendData.rateLimited) {
-          startForgotPwdCooldown(backendData.remaining || 30);
-        }
-        throw new Error(backendData.error || 'Failed to dispatch reset link.');
-      }
-    }
-
-    // Direct Supabase Auth resetPasswordForEmail fallback
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectUrl
-    });
-
-    if (error) throw error;
 
     if (succBox && succMsg) {
-      succMsg.textContent = `Password reset instructions dispatched to ${email}! Please check your inbox and spam folder.`;
+      succMsg.textContent = `Password reset instructions dispatched to ${email}! Please check your email inbox and spam folder.`;
       succBox.classList.remove('hidden');
     }
     showToast('Password reset link sent to ' + email, 'success');
     startForgotPwdCooldown(30);
 
   } catch (err) {
-    const isRateLimit = err.status === 429 || 
-      (err.message && err.message.toLowerCase().includes('rate limit')) || 
-      err.code === 'over_email_send_rate_limit';
+    console.error('[Auth] Caught password reset error:', {
+      message: err.message,
+      status: err.status,
+      code: err.code,
+      name: err.name
+    });
 
-    const friendlyMsg = isRateLimit 
-      ? '⏳ Too many password reset requests. Supabase rate limit reached. Please wait 30 seconds before trying again.'
-      : (err.message || 'Unable to dispatch reset link. Please try again.');
+    let friendlyMsg = err.message || 'Unable to dispatch reset link. Please try again.';
+    let isRateLimit = false;
+
+    // Check SMTP delivery errors (Supabase GoTrue returns HTTP 500 when SMTP rejected email)
+    if (
+      err.status === 500 ||
+      err.code === 'unexpected_failure' ||
+      (err.message && (
+        err.message.toLowerCase().includes('error sending recovery') ||
+        err.message.toLowerCase().includes('error to send email') ||
+        err.message.toLowerCase().includes('smtp')
+      ))
+    ) {
+      friendlyMsg = `⚠️ Supabase SMTP Error (${err.status || 500}): ${err.message}. The Custom SMTP mailer rejected dispatch. Please verify your 16-character Google App Password in Supabase Dashboard → Authentication → SMTP Settings.`;
+    } 
+    // Check Rate limit errors (Status 429)
+    else if (
+      err.status === 429 ||
+      err.code === 'over_email_send_rate_limit' ||
+      (err.message && err.message.toLowerCase().includes('rate limit'))
+    ) {
+      isRateLimit = true;
+      friendlyMsg = `⏳ Supabase Email Rate Limit Reached (${err.status || 429}): ${err.message}. Please wait 30 seconds before trying again.`;
+      startForgotPwdCooldown(30);
+    } 
+    // Check Redirect URL errors (Status 400)
+    else if (
+      err.status === 400 ||
+      (err.message && err.message.toLowerCase().includes('redirect'))
+    ) {
+      friendlyMsg = `⚠️ Supabase Redirect URL Error (${err.status || 400}): ${err.message}. Ensure "${redirectUrl}" is in Supabase Dashboard → Authentication → URL Configuration → Redirect URLs.`;
+    } 
+    // Check Network connection errors
+    else if (
+      err.name === 'AuthRetryableFetchError' ||
+      (err.message && (err.message.toLowerCase().includes('fetch') || err.message.toLowerCase().includes('network')))
+    ) {
+      friendlyMsg = `🌐 Network Connection Error: Unable to reach the Supabase authentication server. Please check your internet connection.`;
+    } 
+    // General Supabase Auth Error (preserve original error message)
+    else {
+      friendlyMsg = `⚠️ Password Reset Error (${err.status || err.code || 'Auth'}): ${err.message}`;
+    }
 
     if (errBox && errMsg) {
       errMsg.textContent = friendlyMsg;
@@ -447,9 +466,6 @@ async function handleForgotPasswordSubmit(event) {
     }
     showToast(friendlyMsg, isRateLimit ? 'warning' : 'error');
 
-    if (isRateLimit) {
-      startForgotPwdCooldown(30);
-    }
   } finally {
     if (spinner) spinner.classList.add('hidden');
     updateForgotPwdCooldownUI();
