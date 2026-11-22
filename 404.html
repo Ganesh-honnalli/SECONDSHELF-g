@@ -6,18 +6,21 @@
   <script>
     // GitHub Pages SPA & Recovery Link Redirection Handler
     (function() {
-      const path = window.location.pathname;
+      const pathname = window.location.pathname || '';
       const search = window.location.search || '';
       const hash = window.location.hash || '';
+      const origin = window.location.origin || '';
+
+      const basePath = pathname.startsWith('/SECONDSHELF-g') ? '/SECONDSHELF-g/' : '/';
 
       // If the path relates to password reset or recovery, forward directly to reset-password.html
-      if (path.includes('reset-password') || search.includes('type=recovery') || hash.includes('type=recovery') || search.includes('code=')) {
-        window.location.replace('./reset-password.html' + search + hash);
+      if (pathname.includes('reset-password') || search.includes('type=recovery') || hash.includes('type=recovery') || search.includes('code=')) {
+        window.location.replace(origin + basePath + 'reset-password.html' + search + hash);
         return;
       }
 
       // Default fallback: redirect to homepage
-      window.location.replace('./' + search + hash);
+      window.location.replace(origin + basePath + search + hash);
     })();
   </script>
 </head>
