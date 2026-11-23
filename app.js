@@ -1177,13 +1177,50 @@ function inspectAuthRedirect() {
         supabase.auth.verifyOtp({
           token_hash: tokenHash,
           type: 'signup'
-        }).then(({ data, error: vErr }) => {
+        }).then(async ({ data, error: vErr }) => {
           if (vErr) {
             showToast('Activation link expired or invalid.', 'error');
             openResendVerificationModal('user', '⚠️ Your activation link has expired or is invalid. Request a new link below.');
-          } else {
-            showToast('Account activated successfully! Please sign in.', 'success');
-            openLoginModal('user');
+          } else if (data?.user) {
+            const meta = data.user.user_metadata || {};
+            if (meta.business_type === 'book_stall' || meta.stall_name) {
+              try {
+                await supabase.from('book_stalls').upsert([{
+                  user_id: data.user.id,
+                  stall_name: meta.stall_name || 'Book Stall',
+                  owner_name: meta.full_name || 'Book Stall Owner',
+                  phone: meta.phone || '',
+                  licence_number: meta.licence || meta.licence_number || 'Pending',
+                  address: meta.address || 'Karnataka',
+                  pincode: '580020',
+                  approval_status: 'pending'
+                }], { onConflict: 'user_id' });
+              } catch (e) {
+                console.warn('Post-activation stall creation error:', e);
+              }
+              showToast('Email verified! Your Book Stall application is pending administrator approval.', 'info');
+              openLoginModal('stall');
+            } else if (meta.business_type === 'scrap_depot' || meta.business_type === 'raddi_owner' || meta.biz_name) {
+              try {
+                await supabase.from('scrap_owners').upsert([{
+                  user_id: data.user.id,
+                  business_name: meta.biz_name || 'Scrap Depot',
+                  owner_name: meta.full_name || 'Scrap Owner',
+                  phone: meta.phone || '',
+                  licence_number: meta.licence || meta.licence_number || 'Pending',
+                  address: meta.address || 'Karnataka',
+                  pincode: '580020',
+                  approval_status: 'pending'
+                }], { onConflict: 'user_id' });
+              } catch (e) {
+                console.warn('Post-activation scrap creation error:', e);
+              }
+              showToast('Email verified! Your Scrap Business application is pending administrator approval.', 'info');
+              openLoginModal('scrap');
+            } else {
+              showToast('Account activated successfully! Please sign in.', 'success');
+              openLoginModal('user');
+            }
           }
           try {
             history.replaceState(null, document.title, window.location.pathname);
@@ -1544,11 +1581,34 @@ async function handleBookStallLogin(event) {
     }
 
     // Check approval status in book_stalls
-    const { data: stall } = await supabase
+    let { data: stall } = await supabase
       .from('book_stalls')
       .select('*')
       .eq('user_id', data.user.id)
       .maybeSingle();
+
+    if (!stall) {
+      const meta = data.user.user_metadata || {};
+      if (meta.business_type === 'book_stall' || meta.stall_name) {
+        console.log('Self-healing missing book_stalls record for user:', data.user.email);
+        try {
+          const { data: createdStall } = await supabase.from('book_stalls').insert([{
+            user_id: data.user.id,
+            stall_name: meta.stall_name || 'Book Stall',
+            owner_name: meta.full_name || 'Book Stall Owner',
+            phone: meta.phone || '',
+            licence_number: meta.licence || meta.licence_number || 'Pending',
+            address: meta.address || 'Karnataka',
+            pincode: '580020',
+            approval_status: 'pending'
+          }]).select().maybeSingle();
+
+          if (createdStall) stall = createdStall;
+        } catch (e) {
+          console.warn('Self-heal stall insert error:', e);
+        }
+      }
+    }
 
     if (!stall) {
       await supabase.auth.signOut();
@@ -1608,6 +1668,11 @@ async function handleBookStallSignUp(event) {
 
   if (isAuthSubmitting) {
     console.warn('Stall registration request already in progress.');
+    return;
+  }
+
+  if (activeCooldownTimers['btn-reg-stall']) {
+    showToast('Please wait for the cooldown timer before submitting again.', 'warning');
     return;
   }
 
@@ -1689,6 +1754,16 @@ async function handleBookStallSignUp(event) {
       });
       if (res.error) throw res.error;
       data = res.data;
+
+      // Duplicate account check (Supabase returns empty identities array for existing users when email confirmation is active)
+      if (data?.user?.identities && data.user.identities.length === 0) {
+        if (errBox && errMsg) {
+          errMsg.innerHTML = `⚠️ An account with email <strong>${email}</strong> is already registered!<br/>Please <button type="button" onclick="switchStallAuthTab('signin')" class="font-bold underline text-blue-800 ml-1">Sign In</button> or click <button type="button" onclick="openForgotPasswordModal('stall')" class="font-bold underline text-blue-800 ml-1">Forgot Password</button>.`;
+          errBox.classList.remove('hidden');
+        }
+        showToast('Account already exists. Please sign in.', 'warning');
+        return;
+      }
     }
 
     const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
@@ -1701,7 +1776,7 @@ async function handleBookStallSignUp(event) {
           phone: phone,
           email: email,
           age_confirmed: true,
-          is_verified: true
+          is_verified: false
         }]);
         await syncUserRole(data.user.id, 'seller', false);
       } catch (e) {}
@@ -1716,7 +1791,7 @@ async function handleBookStallSignUp(event) {
           address: formattedAddress,
           pincode: '580020',
           approval_status: 'pending'
-        }]);
+        }], { onConflict: 'user_id' });
       } catch (e) {
         console.warn('Stall insert fallback:', e);
       }
@@ -1750,6 +1825,7 @@ async function handleBookStallSignUp(event) {
     }
 
     showToast('Your Book Stall Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
+    startButtonCooldown('btn-reg-stall', 'stall-reg-btn-text', 'Submit Book Stall Application for Admin Approval', 60);
 
     setTimeout(() => {
       switchStallAuthTab('signin');
@@ -1758,14 +1834,26 @@ async function handleBookStallSignUp(event) {
     }, 2500);
 
   } catch (err) {
-    const friendlyMsg = formatAuthErrorMessage(err);
+    console.error('Book stall signup error:', err);
+    const msg = (err.message || '').toLowerCase();
+    const isRateLimit = err.status === 429 || msg.includes('rate limit') || err.code === 'over_email_send_rate_limit';
+    const isAlreadyRegistered = msg.includes('already registered') || err.code === 'user_already_exists';
+
+    let displayMsg = formatAuthErrorMessage(err, 'register');
+    if (isRateLimit) {
+      displayMsg = '⏳ Supabase Email Rate Limit Reached: Too many verification requests were dispatched recently. Your registration was submitted, but email dispatch is temporarily throttled by the provider. Please check your inbox (and spam folder) or wait 60 seconds before trying again.';
+      startButtonCooldown('btn-reg-stall', 'stall-reg-btn-text', 'Submit Book Stall Application for Admin Approval', 60);
+    } else if (isAlreadyRegistered) {
+      displayMsg = `⚠️ An account with email <strong>${email}</strong> already exists! Please <button type="button" onclick="switchStallAuthTab('signin')" class="font-bold underline text-blue-800 ml-1">Sign In</button> or use <button type="button" onclick="openForgotPasswordModal('stall')" class="font-bold underline text-blue-800 ml-1">Forgot Password</button>.`;
+    }
+
     if (errBox && errMsg) {
-      errMsg.innerHTML = friendlyMsg;
+      errMsg.innerHTML = displayMsg;
       errBox.classList.remove('hidden');
     }
-    showToast(friendlyMsg, 'error');
+    showToast(isRateLimit ? 'Email rate limit reached. Please wait.' : (isAlreadyRegistered ? 'Email already registered.' : displayMsg), isRateLimit ? 'warning' : 'error');
 
-    if (err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit')) || err.code === 'over_email_send_rate_limit') {
+    if (isRateLimit) {
       startButtonCooldown('btn-reg-stall', 'stall-reg-btn-text', 'Submit Book Stall Application for Admin Approval', 60);
     }
   } finally {
@@ -1846,11 +1934,34 @@ async function handleScrapOwnerLogin(event) {
     }
 
     // Check approval status in scrap_owners
-    const { data: scrap } = await supabase
+    let { data: scrap } = await supabase
       .from('scrap_owners')
       .select('*')
       .eq('user_id', data.user.id)
       .maybeSingle();
+
+    if (!scrap) {
+      const meta = data.user.user_metadata || {};
+      if (meta.business_type === 'scrap_depot' || meta.business_type === 'raddi_owner' || meta.biz_name) {
+        console.log('Self-healing missing scrap_owners record for user:', data.user.email);
+        try {
+          const { data: createdScrap } = await supabase.from('scrap_owners').insert([{
+            user_id: data.user.id,
+            business_name: meta.biz_name || 'Scrap Depot',
+            owner_name: meta.full_name || 'Scrap Owner',
+            phone: meta.phone || '',
+            licence_number: meta.licence || meta.licence_number || 'Pending',
+            address: meta.address || 'Karnataka',
+            pincode: '580020',
+            approval_status: 'pending'
+          }]).select().maybeSingle();
+
+          if (createdScrap) scrap = createdScrap;
+        } catch (e) {
+          console.warn('Self-heal scrap insert error:', e);
+        }
+      }
+    }
 
     if (!scrap) {
       await supabase.auth.signOut();
@@ -1910,6 +2021,11 @@ async function handleScrapOwnerSignUp(event) {
 
   if (isAuthSubmitting) {
     console.warn('Scrap registration request already in progress.');
+    return;
+  }
+
+  if (activeCooldownTimers['btn-reg-scrap']) {
+    showToast('Please wait for the cooldown timer before submitting again.', 'warning');
     return;
   }
 
@@ -1991,6 +2107,16 @@ async function handleScrapOwnerSignUp(event) {
       });
       if (res.error) throw res.error;
       data = res.data;
+
+      // Duplicate account check (Supabase returns empty identities array for existing users when email confirmation is active)
+      if (data?.user?.identities && data.user.identities.length === 0) {
+        if (errBox && errMsg) {
+          errMsg.innerHTML = `⚠️ An account with email <strong>${email}</strong> is already registered!<br/>Please <button type="button" onclick="switchScrapAuthTab('signin')" class="font-bold underline text-blue-800 ml-1">Sign In</button> or click <button type="button" onclick="openForgotPasswordModal('scrap')" class="font-bold underline text-blue-800 ml-1">Forgot Password</button>.`;
+          errBox.classList.remove('hidden');
+        }
+        showToast('Account already exists. Please sign in.', 'warning');
+        return;
+      }
     }
 
     const formattedAddress = `${address} | City: ${city} | District: ${district} | State: ${stateVal}`;
@@ -2003,7 +2129,7 @@ async function handleScrapOwnerSignUp(event) {
           phone: phone,
           email: email,
           age_confirmed: true,
-          is_verified: true
+          is_verified: false
         }]);
         await syncUserRole(data.user.id, 'seller', false);
       } catch (e) {}
@@ -2019,7 +2145,7 @@ async function handleScrapOwnerSignUp(event) {
           base_area: city,
           pincode: '580020',
           approval_status: 'pending'
-        }]);
+        }], { onConflict: 'user_id' });
       } catch (e) {
         console.warn('Scrap insert fallback:', e);
       }
@@ -2053,6 +2179,7 @@ async function handleScrapOwnerSignUp(event) {
     }
 
     showToast('Your Scrap Business Owner application has been submitted successfully. Please wait for administrator approval.', 'info');
+    startButtonCooldown('btn-reg-scrap', 'scrap-reg-btn-text', 'Submit Scrap Business Application for Admin Approval', 60);
 
     setTimeout(() => {
       switchScrapAuthTab('signin');
@@ -2061,14 +2188,26 @@ async function handleScrapOwnerSignUp(event) {
     }, 2500);
 
   } catch (err) {
-    const friendlyMsg = formatAuthErrorMessage(err);
+    console.error('Scrap owner signup error:', err);
+    const msg = (err.message || '').toLowerCase();
+    const isRateLimit = err.status === 429 || msg.includes('rate limit') || err.code === 'over_email_send_rate_limit';
+    const isAlreadyRegistered = msg.includes('already registered') || err.code === 'user_already_exists';
+
+    let displayMsg = formatAuthErrorMessage(err, 'register');
+    if (isRateLimit) {
+      displayMsg = '⏳ Supabase Email Rate Limit Reached: Too many verification requests were dispatched recently. Your registration was submitted, but email dispatch is temporarily throttled by the provider. Please check your inbox (and spam folder) or wait 60 seconds before trying again.';
+      startButtonCooldown('btn-reg-scrap', 'scrap-reg-btn-text', 'Submit Scrap Business Application for Admin Approval', 60);
+    } else if (isAlreadyRegistered) {
+      displayMsg = `⚠️ An account with email <strong>${email}</strong> already exists! Please <button type="button" onclick="switchScrapAuthTab('signin')" class="font-bold underline text-blue-800 ml-1">Sign In</button> or use <button type="button" onclick="openForgotPasswordModal('scrap')" class="font-bold underline text-blue-800 ml-1">Forgot Password</button>.`;
+    }
+
     if (errBox && errMsg) {
-      errMsg.innerHTML = friendlyMsg;
+      errMsg.innerHTML = displayMsg;
       errBox.classList.remove('hidden');
     }
-    showToast(friendlyMsg, 'error');
+    showToast(isRateLimit ? 'Email rate limit reached. Please wait.' : (isAlreadyRegistered ? 'Email already registered.' : displayMsg), isRateLimit ? 'warning' : 'error');
 
-    if (err.status === 429 || (err.message && err.message.toLowerCase().includes('rate limit')) || err.code === 'over_email_send_rate_limit') {
+    if (isRateLimit) {
       startButtonCooldown('btn-reg-scrap', 'scrap-reg-btn-text', 'Submit Scrap Business Application for Admin Approval', 60);
     }
   } finally {
@@ -2901,6 +3040,7 @@ async function handleBusinessApplySubmit(event) {
           {
             user_id: state.currentUser.id,
             stall_name: name,
+            owner_name: state.currentUser.name || state.currentUser.full_name || 'Owner',
             licence_number: licence,
             address: fullAddress,
             pincode: pincode,
@@ -2915,6 +3055,7 @@ async function handleBusinessApplySubmit(event) {
           {
             user_id: state.currentUser.id,
             business_name: name,
+            owner_name: state.currentUser.name || state.currentUser.full_name || 'Owner',
             licence_number: licence,
             address: fullAddress,
             pincode: pincode,
@@ -3535,6 +3676,13 @@ async function refreshRequestsAndOffers() {
       .from('transactions')
       .select('*, payment_records(*)');
     if (tData) state.transactions = tData;
+
+    // Refresh Stalls & Scrap Owners (critical for Admin Approvals tab & directories)
+    const { data: freshStalls } = await supabase.from('book_stalls').select('*');
+    if (freshStalls) state.bookStalls = freshStalls;
+
+    const { data: freshScraps } = await supabase.from('scrap_owners').select('*');
+    if (freshScraps) state.scrapOwners = freshScraps;
 
     // User-specific notifications
     if (state.currentUser) {
