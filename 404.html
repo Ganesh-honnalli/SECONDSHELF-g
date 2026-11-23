@@ -13,8 +13,14 @@
 
       const basePath = pathname.startsWith('/SECONDSHELF-g') ? '/SECONDSHELF-g/' : '/';
 
+      // If the path relates to auth callback (e.g. Google OAuth)
+      if (pathname.includes('auth/callback')) {
+        window.location.replace(origin + basePath + 'auth/callback/' + search + hash);
+        return;
+      }
+
       // If the path relates to password reset or recovery, forward directly to reset-password.html
-      if (pathname.includes('reset-password') || search.includes('type=recovery') || hash.includes('type=recovery') || search.includes('code=')) {
+      if (pathname.includes('reset-password') || search.includes('type=recovery') || hash.includes('type=recovery')) {
         window.location.replace(origin + basePath + 'reset-password.html' + search + hash);
         return;
       }

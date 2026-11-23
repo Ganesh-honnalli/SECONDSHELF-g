@@ -1234,35 +1234,70 @@ function inspectAuthRedirect() {
   // Detect PKCE Authorization Code (?code=...)
   const code = searchParams.get('code');
   if (code) {
-    console.log('PKCE authorization code detected in URL! Exchanging code for session...');
-    isPasswordRecoveryMode = true;
-    showToast('Verifying password recovery session...', 'info');
+    const isRecovery = type === 'recovery' || search.includes('type=recovery') || hash.includes('type=recovery') || window.location.pathname.includes('reset-password');
 
-    try {
-      if (!supabase) getSupabase();
-      supabase.auth.exchangeCodeForSession(code).then(({ data, error: cErr }) => {
-        if (cErr) {
-          console.error('PKCE exchange error:', cErr);
-          showToast('Password reset link has expired or is invalid.', 'error');
-          openForgotPasswordModal(state.lastForgotPasswordPortal || 'user');
-          const errBox = document.getElementById('forgot-password-error-box');
-          const errMsg = document.getElementById('forgot-password-error-msg');
-          if (errBox && errMsg) {
-            errMsg.textContent = '⚠️ Your password reset link has expired or has already been used. Please request a fresh reset link below.';
-            errBox.classList.remove('hidden');
+    if (isRecovery) {
+      console.log('PKCE password recovery code detected in URL! Exchanging code for session...');
+      isPasswordRecoveryMode = true;
+      showToast('Verifying password recovery session...', 'info');
+
+      try {
+        if (!supabase) getSupabase();
+        supabase.auth.exchangeCodeForSession(code).then(({ data, error: cErr }) => {
+          if (cErr) {
+            console.error('PKCE exchange error:', cErr);
+            showToast('Password reset link has expired or is invalid.', 'error');
+            openForgotPasswordModal(state.lastForgotPasswordPortal || 'user');
+            const errBox = document.getElementById('forgot-password-error-box');
+            const errMsg = document.getElementById('forgot-password-error-msg');
+            if (errBox && errMsg) {
+              errMsg.textContent = '⚠️ Your password reset link has expired or has already been used. Please request a fresh reset link below.';
+              errBox.classList.remove('hidden');
+            }
+          } else if (data?.session) {
+            console.log('Recovery session established for:', data.user?.email);
+            openSetNewPasswordModal(data.session);
           }
-        } else if (data?.session) {
-          console.log('Recovery session established for:', data.user?.email);
-          openSetNewPasswordModal(data.session);
-        }
-        try {
-          history.replaceState(null, document.title, window.location.pathname);
-        } catch (e) {}
-      });
-    } catch (e) {
-      console.error('Error exchanging code for session:', e);
+          try {
+            history.replaceState(null, document.title, window.location.pathname);
+          } catch (e) {}
+        });
+      } catch (e) {
+        console.error('Error exchanging code for session:', e);
+      }
+      return;
+    } else {
+      // PKCE OAuth / Login code exchange (Google OAuth or other identity provider)
+      console.log('PKCE OAuth authorization code detected in URL! Exchanging code for session...');
+      showToast('Authenticating with Google...', 'info');
+
+      try {
+        if (!supabase) getSupabase();
+        supabase.auth.exchangeCodeForSession(code).then(async ({ data, error: cErr }) => {
+          if (cErr) {
+            console.error('OAuth code exchange error:', cErr);
+            showToast('Google Sign-In failed: ' + (cErr.message || 'Authorization failed'), 'error');
+            openLoginModal('user');
+          } else if (data?.session && data?.user) {
+            console.log('OAuth session verified for Google user:', data.user.email);
+            isPasswordRecoveryMode = false;
+            try { localStorage.removeItem('SECOND_SHELF_OAUTH_PENDING'); } catch (e) {}
+            await ensureGoogleUserProfile(data.user);
+            state.currentSession = data.session;
+            await resolveUserProfile(data.user);
+            showToast(`Welcome, ${state.currentUser?.name || 'Student'}! Signed in with Google.`, 'success');
+            closeModal('modal-login-user');
+            showSection('dashboard');
+          }
+          try {
+            history.replaceState(null, document.title, window.location.pathname);
+          } catch (e) {}
+        });
+      } catch (e) {
+        console.error('Error exchanging OAuth code:', e);
+      }
+      return;
     }
-    return;
   }
 
   // Detect active password recovery callback via hash
@@ -1272,6 +1307,182 @@ function inspectAuthRedirect() {
     setTimeout(() => {
       openSetNewPasswordModal();
     }, 200);
+    return;
+  }
+
+  // Detect implicit OAuth hash callback (#access_token=...)
+  if (hashParams.get('access_token') && type !== 'recovery' && !hash.includes('type=recovery')) {
+    console.log('Implicit OAuth token detected in hash!');
+    setTimeout(async () => {
+      if (!supabase) getSupabase();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && session.user) {
+        isPasswordRecoveryMode = false;
+        try { localStorage.removeItem('SECOND_SHELF_OAUTH_PENDING'); } catch (e) {}
+        await ensureGoogleUserProfile(session.user);
+        state.currentSession = session;
+        await resolveUserProfile(session.user);
+        showToast(`Welcome, ${state.currentUser?.name || 'Student'}! Signed in with Google.`, 'success');
+        closeModal('modal-login-user');
+        showSection('dashboard');
+        try {
+          history.replaceState(null, document.title, window.location.pathname);
+        } catch (e) {}
+      }
+    }, 300);
+  }
+}
+
+// ====================================================================
+// GOOGLE OAUTH PROFILE SYNC & AUTHENTICATION HANDLERS
+// ====================================================================
+
+// Ensure user profile in public.profiles for Google OAuth logins
+async function ensureGoogleUserProfile(user) {
+  if (!user || !supabase) return null;
+
+  try {
+    const { data: existingProfile, error: pErr } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const meta = user.user_metadata || {};
+    const fullName = meta.full_name || meta.name || user.email?.split('@')[0] || 'User';
+    const email = user.email || meta.email || '';
+
+    let profile = existingProfile;
+
+    if (!existingProfile) {
+      console.log('Creating initial profile for Google user:', email);
+      const newProfile = {
+        id: user.id,
+        email: email,
+        full_name: fullName,
+        phone: meta.phone || '',
+        age_confirmed: true,
+        is_verified: true,
+        is_suspended: false
+      };
+
+      const { data: inserted, error: insErr } = await supabase
+        .from('profiles')
+        .insert([newProfile])
+        .select()
+        .maybeSingle();
+
+      if (insErr) {
+        console.warn('Profile insert fallback via upsert:', insErr);
+        const { data: upserted } = await supabase
+          .from('profiles')
+          .upsert([newProfile], { onConflict: 'id' })
+          .select()
+          .maybeSingle();
+        profile = upserted || newProfile;
+      } else {
+        profile = inserted || newProfile;
+      }
+    } else {
+      console.log('Existing profile found for Google user:', existingProfile.full_name);
+      // Non-destructive update: only fill missing full_name or email
+      const updates = {};
+      if (!existingProfile.full_name && fullName) updates.full_name = fullName;
+      if (!existingProfile.email && email) updates.email = email;
+      if (!existingProfile.is_verified) updates.is_verified = true;
+
+      if (Object.keys(updates).length > 0) {
+        await supabase.from('profiles').update(updates).eq('id', user.id);
+        profile = { ...existingProfile, ...updates };
+      }
+    }
+
+    // Ensure default role in public.user_roles is 'seller' (Normal User)
+    try {
+      const { data: existingRoles } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (!existingRoles || existingRoles.length === 0) {
+        console.log('Assigning default seller role to Google user:', user.id);
+        await supabase.from('user_roles').insert([{
+          user_id: user.id,
+          role: 'seller',
+          is_approved: true
+        }]);
+      }
+    } catch (e) {
+      // Gracefully handle if user_roles RLS prevents insert; resolveUserProfile handles default
+    }
+
+    return profile;
+  } catch (err) {
+    console.error('ensureGoogleUserProfile error:', err);
+    return null;
+  }
+}
+
+// Google OAuth Sign-In Initiator (User Login Only)
+async function handleGoogleSignIn() {
+  if (!supabase) getSupabase();
+  const btn = document.getElementById('btn-google-login');
+  const spinner = document.getElementById('google-login-spinner');
+  const icon = document.getElementById('google-login-icon');
+  const btnText = document.getElementById('google-login-btn-text');
+  const errBox = document.getElementById('user-auth-error-box');
+  const errMsg = document.getElementById('user-auth-error-msg');
+
+  if (errBox) errBox.classList.add('hidden');
+
+  try {
+    if (spinner) spinner.classList.remove('hidden');
+    if (icon) icon.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Redirecting to Google...';
+    if (btn) btn.disabled = true;
+
+    try {
+      localStorage.setItem('SECOND_SHELF_OAUTH_PENDING', 'google');
+    } catch (e) {}
+
+    const isGitHubPages = window.location.hostname.includes('github.io');
+    const redirectUrl = isGitHubPages
+      ? 'https://ganesh-honnalli.github.io/SECONDSHELF-g/auth/callback'
+      : (window.location.origin + window.location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '') + '/auth/callback');
+
+    console.log('Initiating Google OAuth with redirectUrl:', redirectUrl);
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account'
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    if (data?.url) {
+      window.location.href = data.url;
+    }
+  } catch (err) {
+    console.error('Google Sign-In Error:', err);
+    if (errBox && errMsg) {
+      errMsg.innerHTML = `⚠️ <strong>Google Sign-In Failed:</strong> ${err.message || 'Unable to connect to Google authentication. Please try again.'}`;
+      errBox.classList.remove('hidden');
+    }
+    showToast(err.message || 'Google Sign-In failed.', 'error');
+
+    if (spinner) spinner.classList.add('hidden');
+    if (icon) icon.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Continue with Google';
+    if (btn) btn.disabled = false;
+    try {
+      localStorage.removeItem('SECOND_SHELF_OAUTH_PENDING');
+    } catch (e) {}
   }
 }
 
@@ -3522,28 +3733,21 @@ async function initSupabase() {
       // Load initial live data from PostgreSQL
       await loadInitialDataFromSupabase();
 
-      // Check current auth session (Security: Clear all logged-in accounts except admin as requested)
+      // Check current auth session and restore active user session
       const { data: { session } } = await supabase.auth.getSession();
       if (session && session.user) {
-        const uEmail = (session.user.email || '').toLowerCase().trim();
-        const isAdmin = uEmail === MASTER_ADMIN_EMAIL.toLowerCase() || uEmail === 'admin@secondshelf.in';
-        if (!isAdmin && !isPasswordRecoveryMode) {
-          console.log('Clearing non-admin session on load:', uEmail);
-          await supabase.auth.signOut();
-          state.currentUser = null;
-          state.currentSession = null;
-          try {
-            localStorage.removeItem('SECOND_SHELF_CURRENT_USER');
-            localStorage.removeItem('SECOND_SHELF_USER_SESSION');
-            localStorage.removeItem('SECOND_SHELF_REMEMBER_USER_EMAIL');
-            localStorage.removeItem('SECOND_SHELF_REMEMBER_STALL_EMAIL');
-            localStorage.removeItem('SECOND_SHELF_REMEMBER_SCRAP_EMAIL');
-          } catch (e) {}
-          updateUserRoleUI();
-          showSection('home');
-        } else {
+        if (!isPasswordRecoveryMode) {
           state.currentSession = session;
+          if (session.user.app_metadata?.provider === 'google') {
+            await ensureGoogleUserProfile(session.user);
+          }
           await resolveUserProfile(session.user);
+
+          // If returning from Google OAuth or navigated to #dashboard
+          if (window.location.hash === '#dashboard' || sessionStorage.getItem('SECOND_SHELF_JUST_LOGGED_IN_OAUTH')) {
+            try { sessionStorage.removeItem('SECOND_SHELF_JUST_LOGGED_IN_OAUTH'); } catch (e) {}
+            showSection('dashboard');
+          }
         }
       }
 
@@ -3556,6 +3760,9 @@ async function initSupabase() {
         } else if (event === 'SIGNED_IN' && session?.user) {
           if (!isPasswordRecoveryMode) {
             state.currentSession = session;
+            if (session.user.app_metadata?.provider === 'google' || localStorage.getItem('SECOND_SHELF_OAUTH_PENDING') === 'google') {
+              await ensureGoogleUserProfile(session.user);
+            }
             await resolveUserProfile(session.user);
           }
         } else if (event === 'SIGNED_OUT') {
@@ -3780,11 +3987,15 @@ async function resolveUserProfile(user) {
 
   try {
     // 1. Fetch Profile
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (!profile) {
+      profile = await ensureGoogleUserProfile(user);
+    }
 
     // 2. Fetch User Roles
     const { data: roles } = await supabase
