@@ -3,6 +3,7 @@
 // ====================================================================
 
 const MASTER_ADMIN_EMAIL = 'ganeshhonnalli07@gmail.com';
+const MASTER_ADMIN_ID = 'f4d41318-16e5-4169-a62c-7ef3f96e5b18';
 var supabase = null;
 const _supabaseLib = (typeof window !== 'undefined' && (window.supabaseLib || window.supabase)) || null;
 
@@ -2010,6 +2011,15 @@ async function handleBookStallSignUp(event) {
       // Notify admin live
       addAdminLiveNotification('Book Stall Application Submitted', ownerName, 'Book Stall', 'PENDING');
 
+      // Persistent notification for Admin console
+      await createPersistentNotification({
+        userId: MASTER_ADMIN_ID,
+        title: '📋 New Book Stall Registration Submitted',
+        message: `Applicant: ${ownerName} | Email: ${email} | Business: ${stallName} | Type: Book Stall | Date: ${new Date().toLocaleDateString()}`,
+        type: 'admin_approval',
+        referenceId: data.user.id
+      });
+
       try {
         await supabase.from('admin_audit_logs').insert([{
           action: 'partner_application',
@@ -2363,6 +2373,15 @@ async function handleScrapOwnerSignUp(event) {
 
       // Notify admin live
       addAdminLiveNotification('Scrap Business Application Submitted', ownerName, 'Recycle & Scrap', 'PENDING');
+
+      // Persistent notification for Admin console
+      await createPersistentNotification({
+        userId: MASTER_ADMIN_ID,
+        title: '📋 New Scrap Recycler Registration Submitted',
+        message: `Applicant: ${ownerName} | Email: ${email} | Business: ${bizName} | Type: Recycle & Scrap | Date: ${new Date().toLocaleDateString()}`,
+        type: 'admin_approval',
+        referenceId: data.user.id
+      });
 
       try {
         await supabase.from('admin_audit_logs').insert([{
@@ -3942,39 +3961,81 @@ async function refreshRequestsAndOffers() {
 function setupRealtimeSubscriptions() {
   if (!supabase) return;
 
-  supabase.channel('public:table-updates')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, payload => {
-      if (state.currentUser && payload.new && payload.new.user_id === state.currentUser.id) {
-        state.notifications.unshift(payload.new);
-        updateNotificationBellUI();
-        showToast(payload.new.title + ': ' + payload.new.message, 'info');
-      }
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'book_offers' }, () => {
-      refreshRequestsAndOffers();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'scrap_offers' }, () => {
-      refreshRequestsAndOffers();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
-      refreshRequestsAndOffers();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_records' }, () => {
-      refreshRequestsAndOffers();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'book_stalls' }, payload => {
-      refreshRequestsAndOffers();
-      if (payload.eventType === 'INSERT' && state.currentUser?.email === MASTER_ADMIN_EMAIL) {
-        showToast('🚨 New Book Stall Application Submitted! Check Pending Approvals.', 'info');
-      }
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'scrap_owners' }, payload => {
-      refreshRequestsAndOffers();
-      if (payload.eventType === 'INSERT' && state.currentUser?.email === MASTER_ADMIN_EMAIL) {
-        showToast('🚨 New Scrap Business Application Submitted! Check Pending Approvals.', 'info');
-      }
-    })
-    .subscribe();
+  try {
+    supabase.channel('public:table-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, payload => {
+        if (!state.currentUser) return;
+        const targetUserId = payload.new?.user_id || payload.old?.user_id;
+        const isRecipient = targetUserId === state.currentUser.id || 
+                            (state.currentUser.role === 'admin' && targetUserId === MASTER_ADMIN_ID);
+
+        if (!isRecipient) return;
+
+        if (payload.eventType === 'INSERT') {
+          if (!state.notifications.some(n => n.id === payload.new.id)) {
+            state.notifications.unshift(payload.new);
+            updateNotificationBellUI();
+            showWhatsAppFloatingToast(
+              payload.new.title,
+              payload.new.message,
+              payload.new.notification_type,
+              payload.new.reference_id,
+              payload.new.id
+            );
+            const modal = document.getElementById('modal-notifications');
+            if (modal && !modal.classList.contains('hidden')) {
+              renderWhatsAppNotifications();
+            }
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          const idx = state.notifications.findIndex(n => n.id === payload.new.id);
+          if (idx !== -1) {
+            state.notifications[idx] = payload.new;
+          } else {
+            state.notifications.unshift(payload.new);
+          }
+          updateNotificationBellUI();
+          const modal = document.getElementById('modal-notifications');
+          if (modal && !modal.classList.contains('hidden')) {
+            renderWhatsAppNotifications();
+          }
+        } else if (payload.eventType === 'DELETE') {
+          state.notifications = state.notifications.filter(n => n.id !== payload.old?.id);
+          updateNotificationBellUI();
+          const modal = document.getElementById('modal-notifications');
+          if (modal && !modal.classList.contains('hidden')) {
+            renderWhatsAppNotifications();
+          }
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'book_offers' }, () => {
+        refreshRequestsAndOffers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scrap_offers' }, () => {
+        refreshRequestsAndOffers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        refreshRequestsAndOffers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_records' }, () => {
+        refreshRequestsAndOffers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'book_stalls' }, payload => {
+        refreshRequestsAndOffers();
+        if (payload.eventType === 'INSERT' && state.currentUser?.email === MASTER_ADMIN_EMAIL) {
+          showToast('🚨 New Book Stall Application Submitted! Check Pending Approvals.', 'info');
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scrap_owners' }, payload => {
+        refreshRequestsAndOffers();
+        if (payload.eventType === 'INSERT' && state.currentUser?.email === MASTER_ADMIN_EMAIL) {
+          showToast('🚨 New Scrap Business Application Submitted! Check Pending Approvals.', 'info');
+        }
+      })
+      .subscribe();
+  } catch (err) {
+    console.warn('Realtime subscription setup notice:', err);
+  }
 }
 
 // ====================================================================
@@ -4600,43 +4661,15 @@ async function handleBookSubmit(event) {
         });
       }
 
-      // Notify approved book stalls (via backend dispatcher and client fallback)
-      try {
-        await fetch('/api/notify-owners', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'book_upload',
-            requestId: newReq.id,
-            bookTitle: titles[0],
-            author: authors[0],
-            condition: conditions[0],
-            price: grandEstimatedPayout,
-            pickupLocation: pickupAddress || 'Local Campus',
-            title: 'New Used Textbook Available 📚',
-            message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`
-          })
-        });
-      } catch (backendErr) {
-        console.warn('Backend notification dispatch notice:', backendErr);
-      }
-
-      try {
-        const { data: stalls } = await supabase.from('book_stalls').select('user_id').eq('approval_status', 'approved');
-        if (stalls) {
-          for (const s of stalls) {
-            await supabase.from('notifications').insert({
-              user_id: s.user_id,
-              title: 'New Book Request Available 📚',
-              message: `${titles[0]} by ${authors[0]} (${conditions[0]}). Est payout cap: ₹${grandEstimatedPayout.toFixed(2)}`,
-              notification_type: 'new_book_request',
-              reference_id: newReq.id
-            });
-          }
-        }
-      } catch (clientNotifErr) {
-        // RLS handled via backend dispatcher
-      }
+      // Notify all eligible approved book stall owners
+      await dispatchBookUploadNotifications({
+        id: newReq.id,
+        title: titles[0] || 'Textbook',
+        subject: authors[0] || 'Used Book',
+        condition: conditions[0] || 'Good',
+        price: grandEstimatedPayout,
+        location: pickupAddress || 'Local Campus'
+      });
 
     } catch (err) {
       console.error('Error submitting book to Supabase:', err);
@@ -4739,42 +4772,15 @@ async function handleRaddiSubmit(event) {
         });
       }
 
-      // Notify approved scrap owners (via backend dispatcher and client fallback)
-      try {
-        await fetch('/api/notify-owners', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'scrap_request',
-            requestId: newScrap.id,
-            weightKg: weight,
-            paperType: paperType,
-            pinCode: pin,
-            address: address,
-            title: 'New Scrap Pickup Request (≥ 10 kg) ♻️',
-            message: `${weight} kg of ${paperType} in area PIN ${pin}. Doorstep pickup requested.`
-          })
-        });
-      } catch (backendErr) {
-        console.warn('Backend notification dispatch notice:', backendErr);
-      }
-
-      try {
-        const { data: owners } = await supabase.from('scrap_owners').select('user_id').eq('approval_status', 'approved');
-        if (owners) {
-          for (const o of owners) {
-            await supabase.from('notifications').insert({
-              user_id: o.user_id,
-              title: 'New Scrap Pickup Request (≥ 10 kg) ♻️',
-              message: `${weight} kg of ${paperType} in area PIN ${pin}. Doorstep pickup requested.`,
-              notification_type: 'new_scrap_request',
-              reference_id: newScrap.id
-            });
-          }
-        }
-      } catch (clientNotifErr) {
-        // RLS handled via backend dispatcher
-      }
+      // Notify approved scrap owners ONLY when weight > 10 kg
+      await dispatchScrapUploadNotifications({
+        id: newScrap.id,
+        scrap_type: paperType,
+        weight: weight,
+        pickup_area: `PIN ${pin}, ${address}`,
+        pickup_address: address,
+        pickup_pin: pin
+      });
 
     } catch (err) {
       console.error('Error submitting scrap to Supabase:', err);
@@ -5257,6 +5263,16 @@ async function stallDeclineCounterOffer(offerId, reqId) {
   if (supabase && offerId) {
     try {
       await supabase.from('book_offers').update({ status: 'Rejected' }).eq('id', offerId);
+      const req = (state.bookRequests || []).find(r => r.id === reqId);
+      if (req?.user_id) {
+        await createPersistentNotification({
+          userId: req.user_id,
+          title: 'Counteroffer Declined by Stall ❌',
+          message: `The book stall declined the proposed counteroffer for "${req.title}".`,
+          type: 'counter_offer_declined',
+          referenceId: reqId
+        });
+      }
     } catch (err) {
       console.error('Error declining counteroffer:', err);
     }
@@ -5851,80 +5867,490 @@ function renderTransactionHistory(role) {
   `;
 }
 
-// Notification Drawer UI
-function openNotificationsModal() {
-  const modal = document.getElementById('modal-notifications');
-  const container = document.getElementById('notifications-list-container');
-  if (modal) modal.classList.remove('hidden');
+// ====================================================================
+// CENTRALIZED NOTIFICATION DISPATCHERS & PERSISTENCE
+// ====================================================================
 
-  if (!container) return;
+// Persistent notification creator: persists directly to Supabase with local fallback
+async function createPersistentNotification({ userId, title, message, type, referenceId }) {
+  if (!userId) {
+    console.warn('createPersistentNotification: missing recipient userId');
+    return null;
+  }
 
-  if (!state.notifications || state.notifications.length === 0) {
-    container.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">You are all caught up! No notifications.</div>';
+  const payload = {
+    user_id: userId,
+    title: title || 'New Alert',
+    message: message || '',
+    notification_type: type || 'system',
+    reference_id: referenceId || null,
+    is_read: false
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('notifications').insert(payload).select().maybeSingle();
+      if (error) {
+        console.warn('Direct notification insert error:', error.message);
+      } else if (data) {
+        // If current user is recipient, update local state immediately
+        const isRecipient = state.currentUser && (
+          state.currentUser.id === userId || 
+          (state.currentUser.role === 'admin' && userId === MASTER_ADMIN_ID)
+        );
+        if (isRecipient && !state.notifications.some(n => n.id === data.id)) {
+          state.notifications.unshift(data);
+          updateNotificationBellUI();
+        }
+        return data;
+      }
+    } catch (e) {
+      console.warn('createPersistentNotification error:', e);
+    }
+  }
+
+  // Offline / fallback local notification
+  const isRecipient = state.currentUser && (
+    state.currentUser.id === userId || 
+    (state.currentUser.role === 'admin' && userId === MASTER_ADMIN_ID)
+  );
+  if (isRecipient) {
+    const localNotif = {
+      id: 'local_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      created_at: new Date().toISOString(),
+      ...payload
+    };
+    state.notifications.unshift(localNotif);
+    updateNotificationBellUI();
+    return localNotif;
+  }
+  return null;
+}
+
+// Batch dispatch notifications to all approved book stalls upon book upload
+async function dispatchBookUploadNotifications(bookReq) {
+  if (!supabase) return;
+  try {
+    const { data: stalls, error: stallErr } = await supabase
+      .from('book_stalls')
+      .select('user_id, stall_name')
+      .eq('approval_status', 'approved');
+
+    if (stallErr) console.warn('Error fetching approved stalls:', stallErr.message);
+    if (!stalls || stalls.length === 0) return;
+
+    const notifs = stalls.filter(s => s.user_id).map(s => ({
+      user_id: s.user_id,
+      title: 'New Used Textbook Uploaded 📚',
+      message: `Book: "${bookReq.title || 'Textbook'}" (${bookReq.subject || 'General'}) | Condition: ${bookReq.condition || 'Used'} | Expected: ₹${parseFloat(bookReq.price || bookReq.expected_price || 0).toFixed(2)} | Location: ${bookReq.location || 'Local Campus'}`,
+      notification_type: 'new_book_request',
+      reference_id: bookReq.id,
+      is_read: false
+    }));
+
+    if (notifs.length > 0) {
+      const { error: insErr } = await supabase.from('notifications').insert(notifs);
+      if (insErr) console.warn('Error dispatching book notifications batch:', insErr.message);
+    }
+  } catch (err) {
+    console.warn('dispatchBookUploadNotifications exception:', err);
+  }
+}
+
+// Batch dispatch notifications to approved scrap owners ONLY when weight > 10 kg
+async function dispatchScrapUploadNotifications(scrapReq) {
+  const weight = parseFloat(scrapReq.weight || scrapReq.estimated_weight_kg || 0);
+
+  // STRICT REQUIREMENT: Only notify scrap owners when weight GREATER than 10 kg
+  if (weight <= 10.0) {
+    console.log(`Scrap request ${scrapReq.id} has weight ${weight} kg (<= 10 kg). Skipping scrap owner notification.`);
     return;
   }
 
-  container.innerHTML = state.notifications.map(n => {
-    let actionBtn = '';
+  if (!supabase) return;
+  try {
+    const { data: owners, error: ownerErr } = await supabase
+      .from('scrap_owners')
+      .select('user_id, business_name')
+      .eq('approval_status', 'approved');
+
+    if (ownerErr) console.warn('Error fetching approved scrap owners:', ownerErr.message);
+    if (!owners || owners.length === 0) return;
+
+    const notifs = owners.filter(o => o.user_id).map(o => ({
+      user_id: o.user_id,
+      title: 'New Scrap Collection Request (≥10kg) ♻️',
+      message: `Waste Type: ${scrapReq.scrap_type || scrapReq.paper_type || 'Paper'} | Weight: ${weight} kg | Location: ${scrapReq.pickup_area || ('PIN ' + scrapReq.pickup_pin)}`,
+      notification_type: 'new_scrap_request',
+      reference_id: scrapReq.id,
+      is_read: false
+    }));
+
+    if (notifs.length > 0) {
+      const { error: insErr } = await supabase.from('notifications').insert(notifs);
+      if (insErr) console.warn('Error dispatching scrap notifications batch:', insErr.message);
+    }
+  } catch (err) {
+    console.warn('dispatchScrapUploadNotifications exception:', err);
+  }
+}
+
+// WhatsApp-styled floating toast banner
+function showWhatsAppFloatingToast(title, message, type, refId, notifId) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'bg-[#075E54] text-white border-2 border-[#25D366] px-3.5 py-2.5 rounded-xl shadow-2xl text-xs flex items-start gap-3 transform transition-all duration-300 translate-y-2 pointer-events-auto cursor-pointer hover:bg-[#128C7E]';
+  toast.onclick = () => {
+    openNotificationsModal();
+    if (notifId) handleNotificationClick(notifId, type, refId, 'view');
+    toast.remove();
+  };
+
+  let icon = '💬';
+  if (type === 'new_book_request' || type === 'book') icon = '📚';
+  else if (type === 'new_scrap_request' || type === 'scrap') icon = '♻️';
+  else if (type === 'admin_approval') icon = '📋';
+  else if (type === 'new_offer' || type === 'counter_offer') icon = '🤝';
+  else if (type === 'account_approved') icon = '🎉';
+  else if (type === 'payment_recorded') icon = '💳';
+
+  toast.innerHTML = `
+    <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-base flex-shrink-0 shadow-inner">
+      ${icon}
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center justify-between gap-2">
+        <strong class="font-bold text-white truncate text-[12px]">${title}</strong>
+        <span class="text-[10px] text-emerald-200 whitespace-nowrap">Just now</span>
+      </div>
+      <p class="text-[11px] text-emerald-100/90 truncate mt-0.5">${message}</p>
+    </div>
+    <button type="button" class="text-white/60 hover:text-white font-bold text-base cursor-pointer ml-1 leading-none" onclick="event.stopPropagation(); this.closest('.pointer-events-auto').remove();">&times;</button>
+  `;
+
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.remove('translate-y-2'), 10);
+  setTimeout(() => {
+    toast.classList.add('opacity-0', 'translate-x-full');
+    setTimeout(() => toast.remove(), 300);
+  }, 5000);
+}
+
+// ====================================================================
+// WHATSAPP-STYLE NOTIFICATION DRAWER & FEED INTERFACE
+// ====================================================================
+
+let currentWhatsAppNotifFilter = 'all';
+
+// Notification categorization helpers
+function isApprovalNotification(n) {
+  const type = (n.notification_type || '').toLowerCase();
+  const title = (n.title || '').toLowerCase();
+  return ['admin_approval', 'account_approved', 'account_rejected', 'partner_approval'].includes(type) ||
+         title.includes('approval') || title.includes('approved') || title.includes('rejected') || title.includes('application');
+}
+
+function isBookNotification(n) {
+  if (isApprovalNotification(n)) return false;
+  const type = (n.notification_type || '').toLowerCase();
+  const title = (n.title || '').toLowerCase();
+  return ['new_book_request', 'book_request', 'book_offer', 'book'].includes(type) ||
+         title.includes('book') || title.includes('textbook');
+}
+
+function isScrapNotification(n) {
+  if (isApprovalNotification(n)) return false;
+  const type = (n.notification_type || '').toLowerCase();
+  const title = (n.title || '').toLowerCase();
+  return ['new_scrap_request', 'scrap_request', 'scrap_offer', 'collection_scheduled', 'weight_recorded', 'scrap'].includes(type) ||
+         title.includes('scrap') || title.includes('raddi') || title.includes('recycl');
+}
+
+function isTransactionNotification(n) {
+  if (isApprovalNotification(n)) return false;
+  const type = (n.notification_type || '').toLowerCase();
+  const title = (n.title || '').toLowerCase();
+  return ['payment_recorded', 'order_completed', 'offer_accepted', 'counter_offer', 'offer_rejected', 'counter_offer_declined', 'new_offer', 'transaction'].includes(type) ||
+         title.includes('payment') || title.includes('offer') || title.includes('payout') || title.includes('order');
+}
+
+// Filter tab switcher
+function filterWhatsAppNotifications(category) {
+  currentWhatsAppNotifFilter = category;
+  const categories = ['all', 'books', 'scrap', 'approvals', 'transactions'];
+  categories.forEach(cat => {
+    const btn = document.getElementById(`notif-filter-${cat}`);
+    if (btn) {
+      if (cat === category) {
+        btn.className = 'px-3 py-1 rounded-full font-bold bg-[#075E54] text-white shadow-sm transition whitespace-nowrap text-[11px]';
+      } else {
+        btn.className = 'px-3 py-1 rounded-full font-bold bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap text-[11px]';
+      }
+    }
+  });
+  renderWhatsAppNotifications();
+}
+
+// Open notifications modal
+function openNotificationsModal() {
+  const modal = document.getElementById('modal-notifications');
+  if (modal) modal.classList.remove('hidden');
+  renderWhatsAppNotifications();
+}
+
+// Render the WhatsApp-inspired message bubble feed
+function renderWhatsAppNotifications() {
+  const container = document.getElementById('notifications-list-container');
+  if (!container) return;
+
+  const notifs = state.notifications || [];
+
+  // 1. Compute category counts and update filter badge UI
+  const countAll = notifs.length;
+  const countBooks = notifs.filter(isBookNotification).length;
+  const countScrap = notifs.filter(isScrapNotification).length;
+  const countApprovals = notifs.filter(isApprovalNotification).length;
+  const countTransactions = notifs.filter(isTransactionNotification).length;
+
+  const elAll = document.getElementById('notif-count-all');
+  const elBooks = document.getElementById('notif-count-books');
+  const elScrap = document.getElementById('notif-count-scrap');
+  const elApprovals = document.getElementById('notif-count-approvals');
+  const elTransactions = document.getElementById('notif-count-transactions');
+
+  if (elAll) elAll.textContent = countAll;
+  if (elBooks) elBooks.textContent = countBooks;
+  if (elScrap) elScrap.textContent = countScrap;
+  if (elApprovals) elApprovals.textContent = countApprovals;
+  if (elTransactions) elTransactions.textContent = countTransactions;
+
+  // 2. Filter list based on current active tab
+  let filtered = notifs;
+  if (currentWhatsAppNotifFilter === 'books') filtered = notifs.filter(isBookNotification);
+  else if (currentWhatsAppNotifFilter === 'scrap') filtered = notifs.filter(isScrapNotification);
+  else if (currentWhatsAppNotifFilter === 'approvals') filtered = notifs.filter(isApprovalNotification);
+  else if (currentWhatsAppNotifFilter === 'transactions') filtered = notifs.filter(isTransactionNotification);
+
+  // 3. Handle empty state
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="text-center text-xs text-slate-500 py-12 flex flex-col items-center justify-center gap-2">
+        <div class="w-12 h-12 rounded-full bg-white/80 shadow border border-slate-200 flex items-center justify-center text-2xl">
+          💬
+        </div>
+        <strong class="text-slate-700 text-sm">No Messages in this View</strong>
+        <p class="max-w-xs text-[11px] text-slate-500 leading-relaxed">
+          ${currentWhatsAppNotifFilter === 'all' 
+            ? 'Real-time book uploads, raddi collection requests, offers, and partner updates will appear here as live chat messages.' 
+            : 'No notifications found under "' + currentWhatsAppNotifFilter + '".'}
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  // 4. Render WhatsApp Chat Bubbles
+  container.innerHTML = filtered.map(n => {
+    const isRead = !!n.is_read;
+    const unreadBubbleClass = isRead 
+      ? 'border-l-4 border-l-slate-300 bg-white/95 opacity-90 shadow-sm' 
+      : 'border-l-4 border-l-[#25D366] bg-white shadow-md ring-1 ring-emerald-500/10';
+
+    // WhatsApp double checkmarks: blue (✓✓) if read, grey (✓✓) if unread
+    const checkMarks = isRead 
+      ? '<span class="text-[#53BDEB] font-bold text-xs" title="Read">✓✓</span>' 
+      : '<span class="text-slate-400 font-bold text-xs" title="Delivered">✓✓</span>';
+
+    // Sender avatar and Category Pill
+    let avatar = '💬';
+    let avatarBg = 'bg-slate-100 text-slate-800';
+    let categoryTag = 'System';
+    let tagClass = 'bg-slate-100 text-slate-700 border border-slate-200';
+
+    if (isBookNotification(n)) {
+      avatar = '📚';
+      avatarBg = 'bg-emerald-100 text-emerald-800';
+      categoryTag = 'Book Stall';
+      tagClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+    } else if (isScrapNotification(n)) {
+      avatar = '♻️';
+      avatarBg = 'bg-amber-100 text-amber-800';
+      categoryTag = 'Raddi ≥10kg';
+      tagClass = 'bg-amber-50 text-amber-700 border border-amber-200';
+    } else if (isApprovalNotification(n)) {
+      avatar = '📋';
+      avatarBg = 'bg-blue-100 text-blue-800';
+      categoryTag = 'Partner Approval';
+      tagClass = 'bg-blue-50 text-blue-700 border border-blue-200';
+    } else if (isTransactionNotification(n)) {
+      avatar = '💳';
+      avatarBg = 'bg-purple-100 text-purple-800';
+      categoryTag = 'Order / Deal';
+      tagClass = 'bg-purple-50 text-purple-700 border border-purple-200';
+    }
+
+    // Formatted timestamp
+    const dateObj = n.created_at ? new Date(n.created_at) : new Date();
+    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isToday = new Date().toDateString() === dateObj.toDateString();
+    const displayTime = isToday ? timeStr : `${dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+
+    // Contextual Action Buttons
+    let actionButtonsHtml = '';
     if (n.notification_type === 'new_book_request') {
-      actionBtn = `
-        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-shelf-forest hover:bg-emerald-800 text-amber-300 font-bold text-[11px] rounded-lg shadow-sm transition">
-          <span>📚 View Book & Make Offer</span>
-          <span>→</span>
-        </button>
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'view')" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>📖 View Book</span>
+          </button>
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'offer')" class="px-3 py-1 bg-[#075E54] hover:bg-[#128C7E] text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>💬 Make Offer</span>
+          </button>
+        </div>
       `;
     } else if (n.notification_type === 'new_scrap_request') {
-      actionBtn = `
-        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
-          <span>♻️ View Scrap & Schedule Pickup</span>
-          <span>→</span>
-        </button>
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'view')" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>♻️ View Request</span>
+          </button>
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'contact')" class="px-3 py-1 bg-[#075E54] hover:bg-[#128C7E] text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>📞 Contact User</span>
+          </button>
+        </div>
       `;
-    } else if (['counter_offer', 'collection_scheduled', 'weight_recorded', 'order_completed'].includes(n.notification_type)) {
-      actionBtn = `
-        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
-          <span>📦 View Order Details</span>
-          <span>→</span>
-        </button>
+    } else if (n.notification_type === 'admin_approval') {
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'view')" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>🔍 View Details</span>
+          </button>
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'approve')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>✓ Approve</span>
+          </button>
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'reject')" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>✕ Reject</span>
+          </button>
+        </div>
+      `;
+    } else if (n.notification_type === 'new_offer' || n.notification_type === 'counter_offer') {
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'view')" class="px-3 py-1 bg-[#075E54] hover:bg-[#128C7E] text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>🤝 View Offer Details</span>
+          </button>
+        </div>
+      `;
+    } else if (n.notification_type === 'payment_recorded') {
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'confirm')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>💳 Confirm Payment Received</span>
+          </button>
+        </div>
       `;
     } else if (n.notification_type === 'account_approved') {
-      actionBtn = `
-        <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
-          <span>🚀 Open Dashboard Console</span>
-          <span>→</span>
-        </button>
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'view')" class="px-3 py-1 bg-[#075E54] hover:bg-[#128C7E] text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>🚀 Open Partner Console</span>
+          </button>
+        </div>
+      `;
+    } else if (['collection_scheduled', 'weight_recorded', 'order_completed', 'offer_accepted'].includes(n.notification_type)) {
+      actionButtonsHtml = `
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+          <button type="button" onclick="handleNotificationClick('${n.id}', '${n.notification_type}', '${n.reference_id}', 'view')" class="px-3 py-1 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-sm">
+            <span>📦 View Order Details</span>
+          </button>
+        </div>
       `;
     }
 
     return `
-      <div class="p-3 mb-2 rounded-xl border ${n.is_read ? 'bg-white border-slate-200 opacity-75' : 'bg-amber-50/80 border-amber-200 font-medium'} text-xs shadow-sm transition">
-        <div class="flex items-center justify-between gap-2">
-          <strong class="text-slate-900 flex items-center gap-1">
-            ${!n.is_read ? '<span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>' : ''}
-            ${n.title}
-          </strong>
-          <span class="text-[10px] text-slate-400 whitespace-nowrap">${new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+      <div class="p-3 sm:p-3.5 rounded-2xl border transition-all duration-200 ${unreadBubbleClass}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-sm flex-shrink-0 shadow-inner">
+              ${avatar}
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <strong class="text-slate-900 text-xs sm:text-[13px] font-bold truncate">${n.title}</strong>
+                ${!isRead ? '<span class="w-2 h-2 rounded-full bg-[#25D366] inline-block animate-pulse"></span>' : ''}
+              </div>
+              <span class="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-full mt-0.5 ${tagClass}">${categoryTag}</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap flex-shrink-0">
+            <span>${displayTime}</span>
+            ${checkMarks}
+          </div>
         </div>
-        <p class="text-slate-600 mt-1 leading-relaxed">${n.message}</p>
-        ${actionBtn}
+
+        <div class="mt-2 text-slate-700 text-xs leading-relaxed pl-10">
+          ${n.message}
+        </div>
+
+        <div class="pl-10">
+          ${actionButtonsHtml}
+        </div>
       </div>
     `;
   }).join('');
 }
 
-async function handleNotificationClick(notifId, type, refId) {
+// Contextual action & notification click handler
+async function handleNotificationClick(notifId, type, refId, action = 'view') {
   // Mark as read in Supabase and local state
-  if (supabase && notifId) {
+  if (supabase && notifId && !String(notifId).startsWith('local_')) {
     try {
       await supabase.from('notifications').update({ is_read: true }).eq('id', notifId);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('handleNotificationClick mark read error:', e);
+    }
   }
-  const notif = state.notifications.find(n => n.id === notifId);
+  const notif = (state.notifications || []).find(n => n.id === notifId);
   if (notif) notif.is_read = true;
   updateNotificationBellUI();
   closeModal('modal-notifications');
 
-  // Direct contextual navigation
+  // Direct contextual actions
+  if (type === 'admin_approval') {
+    if (action === 'approve') {
+      const stall = (state.bookStalls || []).find(s => s.user_id === refId || s.id === refId);
+      const scrap = (state.scrapOwners || []).find(s => s.user_id === refId || s.id === refId);
+      if (stall) {
+        await approveBusiness('stall', stall.id);
+        return;
+      } else if (scrap) {
+        await approveBusiness('scrap', scrap.id);
+        return;
+      }
+    } else if (action === 'reject') {
+      const stall = (state.bookStalls || []).find(s => s.user_id === refId || s.id === refId);
+      const scrap = (state.scrapOwners || []).find(s => s.user_id === refId || s.id === refId);
+      if (stall) {
+        await rejectBusiness('stall', stall.id);
+        return;
+      } else if (scrap) {
+        await rejectBusiness('scrap', scrap.id);
+        return;
+      }
+    }
+
+    // Default: View details modal in admin console
+    showSection('admin-dashboard');
+    setAdminTab('approvals');
+    const stall = (state.bookStalls || []).find(s => s.user_id === refId || s.id === refId);
+    const scrap = (state.scrapOwners || []).find(s => s.user_id === refId || s.id === refId);
+    if (stall) openAdminReviewModal('stall', stall.id);
+    else if (scrap) openAdminReviewModal('scrap', scrap.id);
+    return;
+  }
+
   if (type === 'new_book_request') {
     if (state.currentUser?.role === 'book_stall') {
       showSection('stall-dashboard');
@@ -5932,19 +6358,39 @@ async function handleNotificationClick(notifId, type, refId) {
       if (refId && refId !== 'null' && refId !== 'undefined') {
         setTimeout(() => {
           if (typeof openBookOfferModal === 'function') openBookOfferModal(refId);
-        }, 350);
+        }, 300);
       }
     } else {
       showSection('browse-books');
     }
-  } else if (type === 'new_scrap_request') {
+    return;
+  }
+
+  if (type === 'new_scrap_request') {
     if (state.currentUser?.role === 'scrap_owner' || state.currentUser?.role === 'raddi_owner') {
       showSection('scrap-dashboard');
       setScrapTab('pickup-requests');
+      if (action === 'contact') {
+        const req = (state.wasteRequests || []).find(r => r.id === refId);
+        if (req) {
+          showToast(`Seller: ${req.seller_name || 'Student'} | Phone: ${req.seller_phone || 'Available in pickup view'}`, 'info');
+        }
+      }
     } else {
       showSection('browse-raddi');
     }
-  } else if (type === 'account_approved') {
+    return;
+  }
+
+  if (type === 'payment_recorded' && action === 'confirm') {
+    const trx = (state.transactions || []).find(t => t.id === refId || t.request_id === refId);
+    if (trx) {
+      openPaymentConfirmModal(trx.transaction_type, trx.request_id);
+      return;
+    }
+  }
+
+  if (type === 'account_approved') {
     if (state.currentUser?.role === 'book_stall') {
       showSection('stall-dashboard');
     } else if (state.currentUser?.role === 'scrap_owner' || state.currentUser?.role === 'raddi_owner') {
@@ -5952,13 +6398,21 @@ async function handleNotificationClick(notifId, type, refId) {
     } else {
       showSection('dashboard');
     }
-  } else {
-    showSection('dashboard');
+    return;
   }
+
+  if (type === 'new_offer' || type === 'counter_offer' || type === 'offer_accepted') {
+    openCurrentRoleDashboard();
+    return;
+  }
+
+  // Fallback
+  openCurrentRoleDashboard();
 }
 
+// Update notification unread counter badge in navigation bar
 function updateNotificationBellUI() {
-  const unread = state.notifications.filter(n => !n.is_read).length;
+  const unread = (state.notifications || []).filter(n => !n.is_read).length;
   const countEl = document.getElementById('notification-unread-count');
   if (countEl) {
     if (unread > 0) {
@@ -5970,13 +6424,33 @@ function updateNotificationBellUI() {
   }
 }
 
+// Mark all notifications as read in Supabase and local UI
 async function markAllNotificationsAsRead() {
   if (supabase && state.currentUser) {
-    await supabase.from('notifications').update({ is_read: true }).eq('user_id', state.currentUser.id);
+    try {
+      await supabase.from('notifications').update({ is_read: true }).eq('user_id', state.currentUser.id);
+    } catch (e) {
+      console.warn('markAllNotificationsAsRead error:', e);
+    }
   }
-  state.notifications.forEach(n => n.is_read = true);
+  (state.notifications || []).forEach(n => n.is_read = true);
   updateNotificationBellUI();
-  openNotificationsModal();
+  renderWhatsAppNotifications();
+  showToast('All notifications marked as read ✓✓', 'success');
+}
+
+// Attach to window object for reliable inline event invocation
+if (typeof window !== 'undefined') {
+  window.createPersistentNotification = createPersistentNotification;
+  window.dispatchBookUploadNotifications = dispatchBookUploadNotifications;
+  window.dispatchScrapUploadNotifications = dispatchScrapUploadNotifications;
+  window.showWhatsAppFloatingToast = showWhatsAppFloatingToast;
+  window.filterWhatsAppNotifications = filterWhatsAppNotifications;
+  window.openNotificationsModal = openNotificationsModal;
+  window.renderWhatsAppNotifications = renderWhatsAppNotifications;
+  window.handleNotificationClick = handleNotificationClick;
+  window.updateNotificationBellUI = updateNotificationBellUI;
+  window.markAllNotificationsAsRead = markAllNotificationsAsRead;
 }
 
 // ====================================================================
